@@ -4,6 +4,10 @@ Runs only when DOBBY_DB_TESTS=1, inside the compose network with migrations appl
     see docs/development.md in the repository root.
 """
 
+# Imports are inside the tests: loading the app modules needs real-looking bot settings,
+# which only the DB test run provides.
+# ruff: noqa: PLC0415
+
 import os
 import random
 from datetime import timedelta
@@ -33,7 +37,9 @@ class RecordingPublisher:
 
 
 @pytest.fixture
-async def container(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncContainer]:
+async def container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[AsyncContainer]:
     monkeypatch.setenv("DOBBY_EXPORT_PATH", str(tmp_path / "users.json"))
     monkeypatch.setenv("DOBBY_SUBSCRIPTION_URL_TEMPLATE", "https://sub.example.invalid/{id}")
 
@@ -105,8 +111,13 @@ async def test_subscription_lifecycle_reaches_the_file(container: AsyncContainer
             )
             await uow.commit()
         plan = PlanSnapshotDto(
-            id=0, name="Trial", type=PlanType.UNLIMITED,
-            traffic_limit=0, device_limit=0, duration=3, is_trial=True,
+            id=0,
+            name="Trial",
+            type=PlanType.UNLIMITED,
+            traffic_limit=0,
+            device_limit=0,
+            duration=3,
+            is_trial=True,
         )
         trial = await request.get(ActivateTrialSubscription)
         await trial.system(ActivateTrialSubscriptionDto(user=user, plan=plan))

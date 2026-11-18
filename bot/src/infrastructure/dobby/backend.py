@@ -24,6 +24,7 @@ from src.core.utils.time import datetime_now
 
 from .links import SubscriptionLinkProvider
 
+
 class ExportTrigger(Protocol):
     async def request(self) -> None: ...
 
@@ -55,6 +56,8 @@ class BackendUser:
     last_connected_node_uuid: Optional[UUID] = None
 
 
+# The protocol is typed with remnapy's UserResponseDto. BackendUser has the fields remnashop reads
+# from it, so methods returning BackendUser carry "type: ignore[override]".
 class DobbyBackend(Remnawave):
     """Drop-in replacement for the Remnawave panel client.
 
@@ -80,7 +83,7 @@ class DobbyBackend(Remnawave):
         # No panel to connect to. Report the minimum supported version so startup checks pass.
         return REMNAWAVE_MIN_VERSION
 
-    async def create_user(
+    async def create_user(  # type: ignore[override]
         self,
         user: UserDto,
         plan: Optional[PlanSnapshotDto] = None,
@@ -92,7 +95,7 @@ class DobbyBackend(Remnawave):
         logger.info(f"Backend user '{uuid}' created for user '{user.id}'")
         return result
 
-    async def update_user(
+    async def update_user(  # type: ignore[override]
         self,
         user: UserDto,
         uuid: UUID,
@@ -117,28 +120,28 @@ class DobbyBackend(Remnawave):
         await self._changed()
         return True
 
-    async def get_user_by_uuid(self, uuid: UUID) -> Optional[BackendUser]:
+    async def get_user_by_uuid(self, uuid: UUID) -> Optional[BackendUser]:  # type: ignore[override]
         subscription = await self.subscription_dao.get_by_remna_id(uuid)
         if not subscription:
             return None
         user = await self.user_dao.get_by_id(subscription.user_id)
         return self._from_subscription(subscription, user)
 
-    async def get_users_by_telegram_id(self, telegram_id: int) -> list[BackendUser]:
+    async def get_users_by_telegram_id(self, telegram_id: int) -> list[BackendUser]:  # type: ignore[override]
         user = await self.user_dao.get_by_telegram_id(telegram_id)
         if not user:
             return []
         subscription = await self.subscription_dao.get_current(user.id)
         return [self._from_subscription(subscription, user)] if subscription else []
 
-    async def get_users_by_email(self, email: str) -> list[BackendUser]:
+    async def get_users_by_email(self, email: str) -> list[BackendUser]:  # type: ignore[override]
         user = await self.user_dao.get_by_email(email)
         if not user:
             return []
         subscription = await self.subscription_dao.get_current(user.id)
         return [self._from_subscription(subscription, user)] if subscription else []
 
-    async def get_all_users(self, limit: int, offset: int) -> list[BackendUser]:
+    async def get_all_users(self, limit: int, offset: int) -> list[BackendUser]:  # type: ignore[override]
         # Only used to import users from a panel. There is no panel.
         return []
 
@@ -156,7 +159,7 @@ class DobbyBackend(Remnawave):
     async def drop_connections(self, user_uuid: UUID) -> None:
         return None
 
-    async def reset_traffic(self, uuid: UUID) -> Optional[BackendUser]:
+    async def reset_traffic(self, uuid: UUID) -> Optional[BackendUser]:  # type: ignore[override]
         return None
 
     async def revoke_subscription(self, uuid: UUID) -> None:

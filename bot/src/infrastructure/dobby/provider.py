@@ -16,9 +16,11 @@ from .snapshot import load_snapshot
 class TaskiqExportTrigger(ExportTrigger):
     async def request(self) -> None:
         # Imported here: the task module imports the broker, which loads the whole config.
-        from src.infrastructure.taskiq.tasks.dobby_export import export_users_after_change_task
+        from src.infrastructure.taskiq.tasks.dobby_export import (  # noqa: PLC0415
+            export_users_after_change_task,
+        )
 
-        await export_users_after_change_task.kiq()
+        await export_users_after_change_task.kiq()  # type: ignore[call-overload]
 
 
 class DobbyProvider(Provider):
