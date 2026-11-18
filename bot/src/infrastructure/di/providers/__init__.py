@@ -1,6 +1,8 @@
 from dishka import Provider
 from dishka.integrations.aiogram import AiogramProvider
 
+from src.infrastructure.dobby.provider import DobbyProvider
+
 from .bot import BotProvider
 from .config import ConfigProvider
 from .dao import DaoProvider
@@ -21,6 +23,7 @@ def get_aiogram_providers() -> list[Provider]:
         ConfigProvider(),
         DaoProvider(),
         DatabaseProvider(),
+        DobbyProvider(),
         I18nProvider(),
         I18nAiogramProvider(),
         PaymentGatewaysProvider(),
@@ -38,6 +41,7 @@ def get_taskiq_providers() -> list[Provider]:
         ConfigProvider(),
         DaoProvider(),
         DatabaseProvider(),
+        DobbyProvider(),
         I18nProvider(),
         I18nTaskiqProvider(),
         PaymentGatewaysProvider(),

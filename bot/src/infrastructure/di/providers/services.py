@@ -13,7 +13,6 @@ from src.application.common import (
     PasswordHasher,
     PaymentNotificationDispatcher,
     Redirect,
-    Remnawave,
     XuiDbReader,
 )
 from src.application.services import (
@@ -35,7 +34,6 @@ from src.infrastructure.services import (
     PasswordHasherImpl,
     PaymentNotificationDispatcherImpl,
     RedirectImpl,
-    RemnawaveImpl,
     SmtpEmailSender,
     WebhookService,
     XuiDbReaderImpl,
@@ -61,7 +59,7 @@ class ServicesProvider(Provider):
     command = provide(source=CommandService)
     webhook = provide(source=WebhookService)
 
-    remnawave = provide(source=RemnawaveImpl, provides=Remnawave)
+    # Remnawave is provided by DobbyProvider (src/infrastructure/dobby).
     remna_webhook = provide(source=RemnaWebhookService, scope=Scope.REQUEST)
 
     notification_queue = provide(source=NotificationQueue)
