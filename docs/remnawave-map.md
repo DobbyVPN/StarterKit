@@ -16,7 +16,7 @@ remnashop reaches the panel in three ways:
 | Method | Called from | What remnashop does | What it reads back | Needed | DobbyBackend |
 |---|---|---|---|---|---|
 | `try_connection` | `lifespan.py` | Checks panel version at startup; on error sends an admin alert, bot keeps running | `Version` | No | Returns min supported version |
-| `create_user` | `subscription/commands/purchase.py` (trial, new purchase), `subscription/commands/set_plan.py` (admin sets plan), `promocode/commands/activate.py` (promo gives a subscription), `subscription/commands/sync.py`, `remnawave/commands/synchronization.py` | Creates a panel user before the bot stores the subscription | `uuid`, `status`, `expire_at`, `subscription_url` → saved as `Subscription.user_remna_id`, `status`, `expire_at`, `url` | **Yes** | New UUID (or the subscription's), expiry from plan, link from template; triggers export |
+| `create_user` | `subscription/commands/purchase.py` (trial, new purchase), `subscription/commands/set_plan.py` (admin sets plan), `promocode/commands/activate.py` (promo gives a subscription), `subscription/commands/sync.py`, `remnawave/commands/synchronization.py` | Creates a panel user before the bot stores the subscription | `uuid`, `status`, `expire_at`, `subscription_url` → saved as `Subscription.user_remna_id`, `status`, `expire_at`, `url` | **Yes** | The user's permanent login (new UUID only for the first subscription), expiry from plan, link from template; triggers export |
 | `update_user` | `purchase.py` (renew, change plan, trial → paid), `set_plan.py`, `promocode/.../activate.py` (days, traffic, devices), `subscription/commands/management.py` (admin: add days, traffic and device limits, squads) , `sync.py` | Pushes new expiry, limits and enabled/disabled status | `uuid`, `status`, `expire_at`, `subscription_url` | **Yes** | Echoes the data, keeps the UUID; triggers export |
 | `enable_user` / `disable_user` | `management.py` `ToggleSubscriptionStatus` (admin) | Enables or disables access | — | **Yes** | Triggers export (disabled users are left out of the file) |
 | `delete_user` | `management.py` `DeleteSubscription` (admin), `sync.py` | Deletes the panel user | `bool` | **Yes** | Triggers export |
@@ -63,8 +63,9 @@ behaves today.
 ## What remnashop expects back
 
 - **A stable id per subscription** (`uuid`). It is stored in `subscriptions.user_remna_id` and
-  used to find the subscription again. `DobbyBackend` issues it with `uuid4()` and keeps it
-  across renewals and plan changes. This is the id exported to the config-delivery service.
+  used to find the subscription again. With a panel a new subscription after expiry or delete
+  got a new id. `DobbyBackend` gives each user one id for life (the id of their first
+  subscription) and exports it as the login.
 - **`subscription_url`**, stored in `subscriptions.url` and shown behind the "Connect" button.
 - **`expire_at`**: for a plan of N days the panel returned now + N days (0 days = year 2099,
   "unlimited"). Renewal computes the new date in the bot and sends it to the panel.

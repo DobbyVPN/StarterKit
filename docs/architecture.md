@@ -26,19 +26,23 @@ own instance on their own server. The bot is a copy of remnashop (`bot/`, see
 2. `DobbyBackend` (`bot/src/infrastructure/dobby/backend.py`) answers with what the panel used
    to return: a subscription id, status, expiry and link. The use case stores them in the bot
    database as before. The backend then asks for an export.
-3. `UserExportJob` (`export_job.py`) reads the current subscriptions, builds the list of users
+3. `UserExportJob` (`export_job.py`) reads the current subscriptions, builds the list of logins
    to serve and hands it to a `UserExporter`. It runs 2 seconds after each change and every
    minute. It uploads only when the list changed, retries a failed upload on the next minute,
    and forces an upload once the last one is an hour old.
-4. The config-delivery service owns server keys and subscription links. It reads the file and
-   stops serving a user when their date passes, even if the bot is down.
+4. The config-delivery service owns server keys. It syncs to the file: logins missing from the
+   list are removed, new ones are added. It does not check dates. The bot cuts a user off at
+   expiry by leaving the login out; the per-minute run notices the date passing even when
+   nothing changed in the database. While the bot is down nobody expires, so the bot has to
+   be monitored.
+5. The bot's only output to the user is the subscription link for their login, no configs.
 
 ## What is stored where
 
 | Data | Where |
 |---|---|
 | Users, roles, blocks, referrals, promo codes | Bot database, remnashop tables (`users`, `referrals`, `promocodes`, ...) |
-| Subscriptions: id, status, expiry, plan snapshot, link | Bot database, `subscriptions`. `user_remna_id` is the permanent subscription id sent outside |
+| Subscriptions: login, status, expiry, plan snapshot, link | Bot database, `subscriptions`. `user_remna_id` is the user's login, sent outside |
 | Plans and prices | Bot database, `plans` |
 | Payments | Bot database, `transactions`; gateway keys encrypted in `payment_gateways` |
 | Export state (last digest and time, lock) | Redis keys `dobby:export:*` |
@@ -46,18 +50,26 @@ own instance on their own server. The bot is a copy of remnashop (`bot/`, see
 
 No new tables are needed: remnashop already keeps every subscription in its own database.
 
-## Exported file (placeholder)
+## Login
 
-Only current subscriptions that are `ACTIVE` and whose user is not blocked are listed.
-Disabled, deleted and blocked users are left out. Expired ones stay with their past date.
+Each user has one login for life: the id of their first subscription. Every later subscription
+of the user reuses it (`DobbyBackend._login_for`): a new purchase after expiry, a purchase after
+an admin deleted the subscription, a promo or an admin-assigned plan. Renewals and plan changes
+keep it anyway. So the subscription link, built from the login, never changes. The login is a
+random UUID, so links cannot be guessed. It is lost only if the user record itself is deleted.
+
+## Exported file
+
+The full list of logins to serve, nothing else. A login is listed when the user's current
+subscription is `ACTIVE`, not expired, and the user is not blocked. Disabled, deleted, expired
+and blocked users are left out. The content is agreed; the JSON wrapper is a placeholder until
+the exact syntax is.
 
 ```json
 {
-  "version": 1,
-  "generated_at": "2026-11-19T12:00:00Z",
-  "users": [
-    {"id": "65fd48d2-92a4-4bc1-9088-9e31f6c97aff", "expires_at": "2026-12-19T12:00:00Z"}
-  ]
+  "version": 2,
+  "generated_at": "2026-11-20T12:00:00Z",
+  "logins": ["65fd48d2-92a4-4bc1-9088-9e31f6c97aff"]
 }
 ```
 
@@ -69,7 +81,8 @@ method: upload to a temp name, then rename on the server.
 ## Subscription links (placeholder)
 
 `TemplateLinkProvider` builds the link from `DOBBY_SUBSCRIPTION_URL_TEMPLATE`, replacing `{id}`
-with the subscription id. It will be replaced once the config-delivery service defines links.
+with the login. It stays as the stub until it is decided how links reach the bot: built from
+the login like this, or read from a file the config-delivery service sends back.
 
 ## What the owner configures
 
@@ -95,11 +108,12 @@ servers and connections. The code stays in place to keep the diff from upstream 
 
 ## Not decided yet
 
-- Export format, sftp address, folder and user, and whether the service re-reads the file
-  right away.
-- How the service turns a subscription id into a link, and whether links can be rotated
-  ("reissue link" in the bot is a no-op for now).
-- Who creates keys on the servers from the file.
+- Exact file syntax (the content, a list of logins, is agreed), sftp address, folder and user,
+  and whether the service re-reads the file right away.
+- How links reach the bot: a template from the login, or a file back from the
+  config-delivery service.
+- Whether links can be rotated. With one login for life, "reissue link" needs a separate
+  token in the link; it is a no-op for now.
 - Whose config-delivery service other StarterKit owners use.
 - Renewal reminders (72/48/24 hours, expired) came from panel webhooks. They need a scheduled
   task over `subscriptions.expire_at` in the bot.
