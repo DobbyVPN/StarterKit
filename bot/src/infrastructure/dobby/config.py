@@ -13,3 +13,6 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
 
     # A full export is forced at least this often even if nothing changed.
     force_export_interval_seconds: int = 3600
+
+    # Local development only: poll Telegram instead of using a webhook (no public address).
+    dev_polling: bool = False

@@ -1,9 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from adaptix import Retort
-from aiogram import Dispatcher
+from aiogram import Bot, Dispatcher
 from aiogram.types import WebhookInfo
 from dishka import AsyncContainer, Scope
 from fastapi import FastAPI
@@ -27,6 +27,8 @@ from src.core.config import AppConfig
 from src.core.constants import REMNAWAVE_MAX_VERSION
 from src.core.utils.i18n_helpers import i18n_format_seconds
 from src.core.utils.time import get_uptime
+from src.infrastructure.dobby.config import DobbyConfig
+from src.infrastructure.dobby.dev_polling import run_dev_polling
 from src.infrastructure.redis.keys import WelcomedVersionKey
 from src.infrastructure.services import (
     CommandService,
@@ -77,9 +79,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await create_default_settings.system()
         settings = await settings_dao.get()
         allowed_updates = dispatcher.resolve_used_update_types()
-        webhook_info: WebhookInfo = await webhook_service.setup_webhook(allowed_updates)
+        dev_polling = DobbyConfig().dev_polling
+        bot = await startup_container.get(Bot)
 
-        if webhook_service.has_error(webhook_info):
+        if dev_polling:
+            webhook_info: Optional[WebhookInfo] = None
+        else:
+            webhook_info = await webhook_service.setup_webhook(allowed_updates)
+
+        if webhook_info and webhook_service.has_error(webhook_info):
             logger.critical(
                 f"Webhook has a last error message: '{webhook_info.last_error_message}'"
             )
@@ -91,6 +99,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await command_service.setup_commands()
 
     await telegram_webhook_endpoint.startup()
+
+    polling_task = (
+        asyncio.create_task(run_dev_polling(bot, telegram_webhook_endpoint, allowed_updates))
+        if dev_polling
+        else None
+    )
 
     logger.opt(colors=True).info(
         rf"""
@@ -155,6 +169,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await event_bus.publish(bot_shutdown_event)
 
     await asyncio.sleep(2)
+
+    if polling_task:
+        polling_task.cancel()
 
     await event_bus.shutdown()
     await notification_worker.shutdown()
