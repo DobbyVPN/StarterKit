@@ -9,7 +9,7 @@ from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import PlanDto, UserDto
 from src.core.enums import PlanAvailability, PlanType
-from src.core.exceptions import PlanNameAlreadyExistsError, SquadsEmptyError, TrialDurationError
+from src.core.exceptions import PlanNameAlreadyExistsError, TrialDurationError
 
 
 @dataclass(frozen=True)
@@ -20,9 +20,7 @@ class CommitPlanResultDto:
 
 
 def _validate_and_prepare_plan(actor: UserDto, plan: PlanDto) -> None:
-    if not plan.internal_squads:
-        logger.warning(f"{actor.log} Commit failed: squads list is empty")
-        raise SquadsEmptyError()
+    # Squads are Remnawave server groups. Without a panel a plan has none.
 
     if plan.is_trial and len(plan.durations) > 1:
         logger.warning(
