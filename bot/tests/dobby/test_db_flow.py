@@ -71,7 +71,7 @@ async def container(
     await container.close()
 
 
-async def export(container: AsyncContainer) -> dict[str, str]:
+async def export(container: AsyncContainer) -> set[str]:
     from src.infrastructure.dobby.config import DobbyConfig
     from src.infrastructure.dobby.export_job import UserExportJob
 
@@ -79,30 +79,59 @@ async def export(container: AsyncContainer) -> dict[str, str]:
         job = await request.get(UserExportJob)
         await job.run(force=True)
         path = (await request.get(DobbyConfig)).export_path
-    data = orjson.loads(path.read_bytes())
-    return {u["id"]: u["expires_at"] for u in data["users"]}
+    return set(orjson.loads(path.read_bytes())["logins"])
+
+
+async def take_trial(container: AsyncContainer, user_id: int) -> str:
+    """Grants a 3-day trial through remnashop's own use case; returns the login."""
+    from src.application.common.dao import SubscriptionDao, UserDao
+    from src.application.common.uow import UnitOfWork
+    from src.application.dto import PlanSnapshotDto
+    from src.application.use_cases.subscription.commands.purchase import (
+        ActivateTrialSubscription,
+        ActivateTrialSubscriptionDto,
+    )
+    from src.core.enums import PlanType
+
+    plan = PlanSnapshotDto(
+        id=0,
+        name="Trial",
+        type=PlanType.UNLIMITED,
+        traffic_limit=0,
+        device_limit=0,
+        duration=3,
+        is_trial=True,
+    )
+    async with container(scope=Scope.REQUEST) as request:
+        uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
+        async with uow:
+            await user_dao.set_trial_available(user_id, True)
+            await uow.commit()
+        user = await user_dao.get_by_id(user_id)
+        assert user is not None
+        await (await request.get(ActivateTrialSubscription)).system(
+            ActivateTrialSubscriptionDto(user=user, plan=plan)
+        )
+        sub = await (await request.get(SubscriptionDao)).get_current(user_id)
+        assert sub is not None
+        assert sub.url == f"https://sub.example.invalid/{sub.user_remna_id}"
+        return str(sub.user_remna_id)
 
 
 async def test_subscription_lifecycle_reaches_the_file(container: AsyncContainer) -> None:
     from src.application.common.dao import SubscriptionDao, UserDao
     from src.application.common.uow import UnitOfWork
-    from src.application.dto import PlanSnapshotDto, UserDto
+    from src.application.dto import UserDto
     from src.application.use_cases.subscription.commands.management import (
         AddSubscriptionDuration,
         AddSubscriptionDurationDto,
         DeleteSubscription,
         ToggleSubscriptionStatus,
     )
-    from src.application.use_cases.subscription.commands.purchase import (
-        ActivateTrialSubscription,
-        ActivateTrialSubscriptionDto,
-    )
-    from src.core.enums import PlanType
     from src.core.utils.time import datetime_now
 
     telegram_id = random.randint(10**12, 10**13)
 
-    # Create: a new user takes the trial.
     async with container(scope=Scope.REQUEST) as request:
         uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
         async with uow:
@@ -110,60 +139,65 @@ async def test_subscription_lifecycle_reaches_the_file(container: AsyncContainer
                 UserDto(telegram_id=telegram_id, name="Test", referral_code=f"t{telegram_id}")
             )
             await uow.commit()
-        plan = PlanSnapshotDto(
-            id=0,
-            name="Trial",
-            type=PlanType.UNLIMITED,
-            traffic_limit=0,
-            device_limit=0,
-            duration=3,
-            is_trial=True,
-        )
-        trial = await request.get(ActivateTrialSubscription)
-        await trial.system(ActivateTrialSubscriptionDto(user=user, plan=plan))
-        sub = await (await request.get(SubscriptionDao)).get_current(user.id)
-        assert sub is not None
-        assert sub.url == f"https://sub.example.invalid/{sub.user_remna_id}"
-        sub_id = str(sub.user_remna_id)
+
+    async def toggle_block() -> None:
+        async with container(scope=Scope.REQUEST) as request:
+            uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
+            async with uow:
+                await user_dao.toggle_blocked_status(user.id)
+                await uow.commit()
 
     try:
-        users = await export(container)
-        assert sub_id in users
-        first_expiry = users[sub_id]
-        assert abs(sub.expire_at - (datetime_now() + timedelta(days=3))) < timedelta(minutes=1)
+        # Create: a new user takes the trial and gets a login.
+        login = await take_trial(container, user.id)
+        assert login in await export(container)
 
-        # Update: an admin adds 10 days.
+        # Update: an admin adds 10 days. Same login.
         async with container(scope=Scope.REQUEST) as request:
             add = await request.get(AddSubscriptionDuration)
             await add.system(AddSubscriptionDurationDto(user_id=user.id, days=10))
-        users = await export(container)
-        assert users[sub_id] > first_expiry
+            sub = await (await request.get(SubscriptionDao)).get_current(user.id)
+            assert sub is not None and str(sub.user_remna_id) == login
+        assert login in await export(container)
 
         # Disable and enable again.
         async with container(scope=Scope.REQUEST) as request:
             await (await request.get(ToggleSubscriptionStatus)).system(user.id)
-        assert sub_id not in await export(container)
+        assert login not in await export(container)
         async with container(scope=Scope.REQUEST) as request:
             await (await request.get(ToggleSubscriptionStatus)).system(user.id)
-        assert sub_id in await export(container)
+        assert login in await export(container)
 
-        # Block the user in the bot.
-        async with container(scope=Scope.REQUEST) as request:
-            uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
-            async with uow:
-                await user_dao.toggle_blocked_status(user.id)
-                await uow.commit()
-        assert sub_id not in await export(container)
-        async with container(scope=Scope.REQUEST) as request:
-            uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
-            async with uow:
-                await user_dao.toggle_blocked_status(user.id)
-                await uow.commit()
+        # Block the user in the bot, then unblock.
+        await toggle_block()
+        assert login not in await export(container)
+        await toggle_block()
+        assert login in await export(container)
 
-        # Delete the subscription.
+        # Expire: the date passes, the login drops out of the file.
+        async with container(scope=Scope.REQUEST) as request:
+            uow = await request.get(UnitOfWork)
+            subscription_dao = await request.get(SubscriptionDao)
+            async with uow:
+                sub = await subscription_dao.get_current(user.id)
+                assert sub is not None
+                sub.expire_at = datetime_now() - timedelta(minutes=1)
+                await subscription_dao.update(sub)
+                await uow.commit()
+        assert login not in await export(container)
+
+        # A new subscription after expiry keeps the login.
+        assert await take_trial(container, user.id) == login
+        assert login in await export(container)
+
+        # Admin deletes the subscription: out of the file.
         async with container(scope=Scope.REQUEST) as request:
             await (await request.get(DeleteSubscription)).system(user.id)
-        assert sub_id not in await export(container)
+        assert login not in await export(container)
+
+        # A new subscription after delete keeps the login too.
+        assert await take_trial(container, user.id) == login
+        assert login in await export(container)
     finally:
         async with container(scope=Scope.REQUEST) as request:
             uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)

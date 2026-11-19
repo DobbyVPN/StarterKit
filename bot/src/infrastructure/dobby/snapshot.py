@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.enums import SubscriptionStatus
+from src.core.utils.time import datetime_now
 from src.infrastructure.database.models.subscription import Subscription
 from src.infrastructure.database.models.user import User
 
@@ -19,20 +20,22 @@ class SubscriptionRow(NamedTuple):
     user_is_blocked: bool
 
 
-def build_snapshot(rows: Iterable[SubscriptionRow]) -> list[ExportedUser]:
-    """Users the config-delivery service should serve.
+def build_snapshot(rows: Iterable[SubscriptionRow], now: datetime) -> list[ExportedUser]:
+    """Logins the config-delivery service should serve.
 
-    Only current subscriptions that are active and belong to users not blocked by an admin.
-    Disabled, deleted and blocked users are left out, so the service stops serving them.
-    Expired subscriptions stay in the file with their past date: the service checks the date
-    itself, which keeps working while the bot is down.
+    Only current subscriptions that are active, not expired, and belong to users not blocked by
+    an admin. Everyone else is left out, so the service removes them. The service does not
+    check dates: the bot cuts expired users off by leaving them out of the next export, which
+    the per-minute export job picks up even when nothing changed in the database.
     """
     users = {
-        row.subscription_id: ExportedUser(id=row.subscription_id, expires_at=row.expire_at)
+        ExportedUser(id=row.subscription_id)
         for row in rows
-        if row.status == SubscriptionStatus.ACTIVE and not row.user_is_blocked
+        if row.status == SubscriptionStatus.ACTIVE
+        and not row.user_is_blocked
+        and row.expire_at > now
     }
-    return sorted(users.values())
+    return sorted(users)
 
 
 async def load_snapshot(session: AsyncSession) -> list[ExportedUser]:
@@ -43,4 +46,4 @@ async def load_snapshot(session: AsyncSession) -> list[ExportedUser]:
         User.is_blocked,
     ).join(User, User.current_subscription_id == Subscription.id)
     result = await session.execute(stmt)
-    return build_snapshot(SubscriptionRow(*row) for row in result.all())
+    return build_snapshot((SubscriptionRow(*row) for row in result.all()), now=datetime_now())

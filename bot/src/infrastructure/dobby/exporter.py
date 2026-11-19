@@ -8,24 +8,26 @@ from uuid import UUID
 
 import orjson
 
-EXPORT_FORMAT_VERSION = 1
+EXPORT_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True, order=True)
 class ExportedUser:
-    # Permanent id issued by the bot (the subscription UUID), never a Telegram username.
+    # Login: the permanent id the bot issues to a user, never a Telegram username.
+    # The subscription link is built from it, so it must not change.
     id: UUID
-    expires_at: datetime
 
 
 def serialize_users(users: Sequence[ExportedUser], generated_at: datetime) -> bytes:
-    """Placeholder format until the config-delivery service defines its own."""
+    """The full list of logins to serve. Logins missing from the list are removed.
+
+    No dates: the bot decides who is served, including the cut-off at expiry.
+    The JSON wrapper is a placeholder until the exact file syntax is agreed.
+    """
     payload = {
         "version": EXPORT_FORMAT_VERSION,
         "generated_at": _iso(generated_at),
-        "users": [
-            {"id": str(user.id), "expires_at": _iso(user.expires_at)} for user in sorted(users)
-        ],
+        "logins": [str(user.id) for user in sorted(users)],
     }
     return orjson.dumps(payload, option=orjson.OPT_INDENT_2)
 

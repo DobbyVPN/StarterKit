@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 from uuid import UUID
 
@@ -7,8 +6,6 @@ import pytest
 
 from src.infrastructure.dobby.export_job import UserExportJob
 from src.infrastructure.dobby.exporter import ExportedUser
-
-EXP = datetime(2026, 12, 1, tzinfo=timezone.utc)
 
 
 class MemoryState:
@@ -56,14 +53,14 @@ def make_job(users: list[ExportedUser]) -> tuple[UserExportJob, MemoryExporter, 
 
 
 async def test_exports_only_on_change_or_when_stale() -> None:
-    users = [ExportedUser(id=UUID(int=1), expires_at=EXP)]
+    users = [ExportedUser(id=UUID(int=1))]
     job, exporter, clock = make_job(users)
 
     assert await job.run() is True
     clock.now += 60
     assert await job.run() is False
 
-    users.append(ExportedUser(id=UUID(int=2), expires_at=EXP))
+    users.append(ExportedUser(id=UUID(int=2)))
     assert await job.run() is True
 
     clock.now += 3600
@@ -79,7 +76,7 @@ async def test_force_exports_unchanged_list() -> None:
 
 
 async def test_failed_export_is_retried_on_next_run() -> None:
-    job, exporter, clock = make_job([ExportedUser(id=UUID(int=1), expires_at=EXP)])
+    job, exporter, clock = make_job([ExportedUser(id=UUID(int=1))])
     exporter.fail = True
     with pytest.raises(ConnectionError):
         await job.run()
@@ -88,3 +85,16 @@ async def test_failed_export_is_retried_on_next_run() -> None:
     clock.now += 60
     assert await job.run() is True
     assert len(exporter.files) == 1
+
+
+async def test_expiry_alone_triggers_an_export() -> None:
+    # The list shrinks when a date passes, without any database change.
+    users = [ExportedUser(id=UUID(int=1))]
+    job, exporter, clock = make_job(users)
+    await job.run()
+
+    users.clear()
+    clock.now += 60
+    assert await job.run() is True
+    assert b"logins" in exporter.files[-1]
+    assert str(UUID(int=1)).encode() not in exporter.files[-1]

@@ -89,7 +89,7 @@ class DobbyBackend(Remnawave):
         plan: Optional[PlanSnapshotDto] = None,
         subscription: Optional[SubscriptionDto] = None,
     ) -> BackendUser:
-        uuid = subscription.user_remna_id if subscription else uuid4()
+        uuid = subscription.user_remna_id if subscription else await self._login_for(user)
         result = self._build(user, uuid, plan, subscription, default_days=3650)
         await self._changed()
         logger.info(f"Backend user '{uuid}' created for user '{user.id}'")
@@ -121,10 +121,15 @@ class DobbyBackend(Remnawave):
         return True
 
     async def get_user_by_uuid(self, uuid: UUID) -> Optional[BackendUser]:  # type: ignore[override]
+        # A login is shared by all subscriptions of a user; prefer the current one.
         subscription = await self.subscription_dao.get_by_remna_id(uuid)
         if not subscription:
             return None
         user = await self.user_dao.get_by_id(subscription.user_id)
+        if user:
+            current = await self.subscription_dao.get_current(user.id)
+            if current and current.user_remna_id == uuid:
+                subscription = current
         return self._from_subscription(subscription, user)
 
     async def get_users_by_telegram_id(self, telegram_id: int) -> list[BackendUser]:  # type: ignore[override]
@@ -185,6 +190,19 @@ class DobbyBackend(Remnawave):
         for name in target_fields & source_fields:
             setattr(target, name, getattr(source, name))
         return target
+
+    async def _login_for(self, user: UserDto) -> UUID:
+        """The user's permanent login: the id of their first subscription, or a new one.
+
+        Every later subscription of the user (new purchase after expiry, purchase after an
+        admin deleted the subscription, promo, admin-assigned plan) reuses it, so the
+        subscription link never changes.
+        """
+        history = await self.subscription_dao.get_all_by_user(user.id)
+        if history:
+            first = min(history, key=lambda s: (s.created_at is None, s.created_at, s.id))
+            return first.user_remna_id
+        return uuid4()
 
     async def _changed(self) -> None:
         try:

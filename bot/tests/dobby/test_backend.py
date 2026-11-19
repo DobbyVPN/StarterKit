@@ -42,7 +42,10 @@ class FakeSubscriptionDao:
         return next((s for s in self.subscriptions if s.user_remna_id == remna_id), None)
 
     async def get_current(self, user_id: int) -> Optional[SubscriptionDto]:
-        return next((s for s in self.subscriptions if s.user_id == user_id), None)
+        return next((s for s in self.subscriptions if s.user_id == user_id and s.id == -1), None)
+
+    async def get_all_by_user(self, user_id: int) -> list[SubscriptionDto]:
+        return [s for s in self.subscriptions if s.user_id == user_id]
 
 
 USER = UserDto(id=7, telegram_id=1001, name="Test")
@@ -65,8 +68,11 @@ def make_backend(
     return backend, trigger
 
 
-def make_subscription(uuid: UUID, status: SubscriptionStatus) -> SubscriptionDto:
+def make_subscription(
+    uuid: UUID, status: SubscriptionStatus, current: bool = True, sub_id: int = 1
+) -> SubscriptionDto:
     return SubscriptionDto(
+        id=-1 if current else sub_id,
         user_id=USER.id,
         user_remna_id=uuid,
         status=status,
@@ -150,3 +156,35 @@ async def test_panel_only_features_are_empty() -> None:
     assert await backend.get_squads_available() is False
     assert await backend.get_internal_squads() == []
     assert await backend.get_all_users(limit=10, offset=0) == []
+
+
+async def test_first_subscription_gets_a_new_login() -> None:
+    backend, _ = make_backend()
+    first = await backend.create_user(USER, plan=PLAN)
+    second_backend, _ = make_backend()
+    second = await second_backend.create_user(USER, plan=PLAN)
+    assert first.uuid != second.uuid
+
+
+async def test_new_subscription_reuses_the_users_login() -> None:
+    # After expiry or an admin delete the user has no current subscription, only history.
+    login = uuid4()
+    old = make_subscription(login, SubscriptionStatus.DELETED, current=False)
+    backend, _ = make_backend([old])
+
+    created = await backend.create_user(USER, plan=PLAN)
+
+    assert created.uuid == login
+    assert created.subscription_url == f"https://sub.example.invalid/{login}"
+
+
+async def test_lookup_by_login_prefers_the_current_subscription() -> None:
+    login = uuid4()
+    old = make_subscription(login, SubscriptionStatus.DELETED, current=False)
+    current = make_subscription(login, SubscriptionStatus.ACTIVE)
+    backend, _ = make_backend([old, current])
+
+    found = await backend.get_user_by_uuid(login)
+
+    assert found is not None
+    assert found.status == SubscriptionStatus.ACTIVE

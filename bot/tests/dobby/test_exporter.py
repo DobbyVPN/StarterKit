@@ -13,18 +13,14 @@ B = UUID("00000000-0000-0000-0000-00000000000b")
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 
 
-def test_serialize_sorts_users_and_uses_utc() -> None:
-    users = [
-        ExportedUser(id=B, expires_at=datetime(2026, 12, 1, tzinfo=timezone.utc)),
-        ExportedUser(id=A, expires_at=datetime(2027, 1, 1, tzinfo=timezone.utc)),
-    ]
+def test_serialize_lists_sorted_logins_without_dates() -> None:
+    users = [ExportedUser(id=B), ExportedUser(id=A)]
     data = orjson.loads(serialize_users(users, generated_at=NOW))
-    assert data["version"] == 1
-    assert data["generated_at"] == "2026-11-19T12:00:00Z"
-    assert data["users"] == [
-        {"id": str(A), "expires_at": "2027-01-01T00:00:00Z"},
-        {"id": str(B), "expires_at": "2026-12-01T00:00:00Z"},
-    ]
+    assert data == {
+        "version": 2,
+        "generated_at": "2026-11-19T12:00:00Z",
+        "logins": [str(A), str(B)],
+    }
 
 
 async def test_file_exporter_writes_and_replaces(tmp_path: Path) -> None:
