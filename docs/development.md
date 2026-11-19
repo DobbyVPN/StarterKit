@@ -32,7 +32,9 @@ docker compose -f docker-compose.local.yml run --rm \
 ## Running the bot locally
 
 Telegram and payment providers deliver updates by webhook, so the bot needs a public HTTPS
-address. Locally a tunnel to `127.0.0.1:5055` works, for example:
+address. Without one, set `DOBBY_DEV_POLLING=true` in `.env`: the bot then polls Telegram
+instead (payment notifications will not arrive). With a public address, a tunnel to
+`127.0.0.1:5055` works, for example:
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:5055
