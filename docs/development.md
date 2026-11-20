@@ -30,6 +30,20 @@ Only the long-running bot (`docker-compose.local.yml`) uses the real `.env`. Kee
 `UVICORN_RELOAD_ENABLED=false` there: every reload restarts the bot, and each start and stop
 sends the owner a notification.
 
+## CI
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`: `ruff check`,
+`ruff format --check`, `mypy src`, the migrations, and the full test suite including the
+Postgres tests, with Postgres and Redis as service containers and the dummy settings from
+`.env.test`. The same checks locally:
+
+```bash
+docker compose -f docker-compose.test.yml -p starterkit-test run --rm tests sh -c '
+  ruff check src tests && ruff format --check src tests && mypy src &&
+  alembic -c src/infrastructure/database/alembic.ini upgrade head && pytest -q tests'
+docker compose -f docker-compose.test.yml -p starterkit-test down -v
+```
+
 ## Running the bot locally
 
 No domain and no tunnel are needed: by default the bot polls Telegram
