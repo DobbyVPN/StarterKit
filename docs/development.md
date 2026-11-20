@@ -10,24 +10,25 @@ docker compose -f docker-compose.local.yml build
 
 ## Tests
 
-Unit tests, no services needed:
+Tests and one-off commands run in their own stack (`docker-compose.test.yml`): a throwaway
+Postgres and Redis and the dummy settings in `.env.test`. They never read the real `.env`, so
+they never reach Telegram, YooKassa or the running bot's database.
 
 ```bash
-docker compose -f docker-compose.local.yml run --rm --no-deps \
-  -v ./tests:/opt/remnashop/tests remnashop pytest -q tests
+docker compose -f docker-compose.test.yml -p starterkit-test run --rm tests
+docker compose -f docker-compose.test.yml -p starterkit-test down -v
 ```
 
-End-to-end test on a real Postgres (trial, add days, disable, block, delete → exported file).
-It uses fake bot settings, so it does not need a real token:
+Any other one-off command the same way, for example lint:
 
 ```bash
-docker compose -f docker-compose.local.yml up -d remnashop-db remnashop-redis
-docker compose -f docker-compose.local.yml run --rm \
-  -e DOBBY_DB_TESTS=1 -e BOT_TOKEN=123456:TESTnotarealtokenTESTnotarealtoken \
-  -e BOT_OWNER_ID=1 -e BOT_SUPPORT_USERNAME=support_test -e APP_DOMAIN=example.invalid \
-  -v ./tests:/opt/remnashop/tests remnashop sh -c \
-  'alembic -c src/infrastructure/database/alembic.ini upgrade head && pytest -q tests'
+docker compose -f docker-compose.test.yml -p starterkit-test run --rm --no-deps tests \
+  ruff check src tests
 ```
+
+Only the long-running bot (`docker-compose.local.yml`) uses the real `.env`. Keep
+`UVICORN_RELOAD_ENABLED=false` there: every reload restarts the bot, and each start and stop
+sends the owner a notification.
 
 ## Running the bot locally
 
