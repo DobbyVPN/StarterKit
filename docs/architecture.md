@@ -67,6 +67,11 @@ made after the give-up still completes when the user returns or presses "I paid"
 move to COMPLETED; the status always comes from the gateway API). The user's check looks 24
 hours back. remnashop's blind 30-minute cleanup of pending transactions skips YooKassa.
 
+Opening the payment screen again within 15 minutes (going back and forth, or "Buy" after "I
+paid") reuses the user's unpaid payment for the same plan, duration and amount: the bot asks
+YooKassa for that payment's page instead of creating a new payment. A payment that can no
+longer be paid is not reused.
+
 ## What is stored where
 
 | Data | Where |

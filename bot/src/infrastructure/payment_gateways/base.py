@@ -54,6 +54,10 @@ class BasePaymentGateway(ABC):
         """Final status of the payment, or None while it is still pending."""
         raise NotImplementedError
 
+    async def fetch_pending_payment_url(self, payment_id: UUID) -> Optional[str]:
+        """Payment page of a still unpaid payment, or None if it can no longer be paid."""
+        raise NotImplementedError
+
     async def build_webhook_response(self, request: Request) -> Response:
         return Response(status_code=200)
 

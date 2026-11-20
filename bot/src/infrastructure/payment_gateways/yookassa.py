@@ -125,15 +125,26 @@ class YookassaGateway(BasePaymentGateway):
         status = await self.fetch_transaction_status(payment_id)
         return (payment_id, status) if status else None
 
-    async def fetch_transaction_status(self, payment_id: UUID) -> Optional[TransactionStatus]:
+    async def _get_payment(self, payment_id: UUID) -> dict[str, Any]:
         response = await self._client.get(f"v3/payments/{payment_id}")
         if response.status_code == 404:
             raise PermissionError(f"Payment '{payment_id}' not found in this shop")
         response.raise_for_status()
         data = orjson.loads(response.content)
 
-        if data.get("id") != str(payment_id):
+        if not isinstance(data, dict) or data.get("id") != str(payment_id):
             raise PermissionError(f"YooKassa returned a different payment for '{payment_id}'")
+        return data
+
+    async def fetch_pending_payment_url(self, payment_id: UUID) -> Optional[str]:
+        data = await self._get_payment(payment_id)
+        if data.get("status") != "pending":
+            return None
+        url = data.get("confirmation", {}).get("confirmation_url")
+        return str(url) if url else None
+
+    async def fetch_transaction_status(self, payment_id: UUID) -> Optional[TransactionStatus]:
+        data = await self._get_payment(payment_id)
 
         match data.get("status"):
             case "succeeded":

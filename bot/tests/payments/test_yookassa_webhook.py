@@ -78,3 +78,25 @@ async def test_unknown_payment_is_rejected() -> None:
     gateway = make_gateway(lambda request: httpx.Response(404, json={"type": "error"}))
     with pytest.raises(PermissionError):
         await gateway.handle_webhook(notification("succeeded"))
+
+
+async def test_pending_payment_url_comes_from_the_api() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": str(PAYMENT_ID),
+                "status": "pending",
+                "confirmation": {"confirmation_url": "https://yoomoney.example.invalid/pay"},
+            },
+        )
+
+    gateway = make_gateway(handler)
+    assert await gateway.fetch_pending_payment_url(PAYMENT_ID) == (
+        "https://yoomoney.example.invalid/pay"
+    )
+
+
+async def test_no_url_for_a_payment_that_is_no_longer_pending() -> None:
+    gateway = make_gateway(api_says("canceled"))
+    assert await gateway.fetch_pending_payment_url(PAYMENT_ID) is None

@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from typing import Any, Optional
 from uuid import UUID
 
 from loguru import logger
@@ -207,6 +208,11 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
             )
             return PaymentResultDto(id=transaction.payment_id, url=None)
 
+        if gateway_instance.supports_status_check:
+            reused = await self._reuse_unpaid_payment(actor, data, gateway_instance)
+            if reused is not None:
+                return reused
+
         transaction = TransactionDto(
             payment_id=uuid.uuid4(),
             user_id=actor.id,
@@ -237,6 +243,38 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
         if gateway_instance.supports_status_check:
             await self.payment_watcher.watch(payment.id)
         return payment
+
+    async def _reuse_unpaid_payment(
+        self, actor: UserDto, data: CreatePaymentDto, gateway_instance: Any
+    ) -> Optional[PaymentResultDto]:
+        """Returns the user's recent unpaid payment for the same purchase, if it can still be paid.
+
+        Opening the payment screen again (back and forth, "Buy" after "I paid") then leads to
+        the same payment page instead of piling up new payments.
+        """
+        existing = await self.transaction_dao.get_recent_pending(
+            user_id=actor.id,
+            plan_id=data.plan_snapshot.id,
+            duration_days=data.plan_snapshot.duration,
+            gateway_type=gateway_instance.data.type,
+        )
+        if (
+            existing is None
+            or existing.purchase_type != data.purchase_type
+            or existing.pricing.final_amount != data.pricing.final_amount
+        ):
+            return None
+
+        try:
+            url = await gateway_instance.fetch_pending_payment_url(existing.payment_id)
+        except Exception as e:
+            logger.warning(f"Could not reuse payment '{existing.payment_id}': {e}")
+            return None
+        if not url:
+            return None
+
+        logger.info(f"Reusing unpaid payment '{existing.payment_id}' for user {actor.log}")
+        return PaymentResultDto(id=existing.payment_id, url=url)
 
 
 class CreateTestPayment(Interactor[PaymentGatewayType, PaymentResultDto]):
