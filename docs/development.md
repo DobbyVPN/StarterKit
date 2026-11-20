@@ -31,17 +31,22 @@ docker compose -f docker-compose.local.yml run --rm \
 
 ## Running the bot locally
 
-Telegram and payment providers deliver updates by webhook, so the bot needs a public HTTPS
-address. Without one, set `DOBBY_DEV_POLLING=true` in `.env`: the bot then polls Telegram
-instead (payment notifications will not arrive). With a public address, a tunnel to
-`127.0.0.1:5055` works, for example:
-
-```bash
-cloudflared tunnel --url http://127.0.0.1:5055
-```
-
-Put the tunnel host (without `https://`) into `APP_DOMAIN`, then:
+No domain and no tunnel are needed: by default the bot polls Telegram
+(`DOBBY_TELEGRAM_MODE=polling`) and confirms YooKassa payments by asking its API. Leave
+`APP_DOMAIN` empty and run:
 
 ```bash
 docker compose -f docker-compose.local.yml up
+```
+
+Webhook mode (`DOBBY_TELEGRAM_MODE=webhook`) needs `APP_DOMAIN` and HTTPS in front of
+`127.0.0.1:5055`.
+
+To deliver a YooKassa notification by hand (for example to test the optional webhook path),
+post the payment id; the bot reads the status from the API, not from the body:
+
+```bash
+curl -X POST http://127.0.0.1:5055/api/v1/payments/yookassa \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"notification","event":"payment.succeeded","object":{"id":"<payment id>"}}'
 ```

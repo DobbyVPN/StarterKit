@@ -6,25 +6,28 @@ own instance on their own server. The bot is a copy of remnashop (`bot/`, see
 
 ## Overview
 
+The bot needs no domain and accepts no inbound connections: it only makes outgoing requests
+(Telegram, the payment provider, the config-delivery service).
+
 ```
- Telegram ──webhook──▶ ┌──────────────── owner's server ────────────────┐
-                       │ bot (FastAPI + aiogram)      taskiq worker     │
- Payment provider ───▶ │   │  remnashop use cases       │ export job    │
-   (webhook)           │   ▼                            ▼               │
-                       │ DobbyBackend ──trigger──▶ export_users_*_task  │
-                       │   │ reads/writes               │ reads         │
-                       │   ▼                            ▼               │
-                       │ PostgreSQL (source of truth)   UserExporter ───┼──▶ config-delivery
-                       │ Redis (queue, export state)    (file now,      │    service
-                       └────────────────────────────────sftp later)────┘    (keys, links)
-                                                                              │
-                                    DobbyVPN client ◀── subscription link ────┘
+                ┌──────────────── owner's server ─────────────────┐
+ Telegram ◀─────┼─ getUpdates (long polling)                       │
+                │ bot (aiogram + FastAPI)       taskiq worker      │
+ YooKassa ◀─────┼─ create payment,              payment checks,    │
+   API          │  check payment status         user export        │
+                │   │                              │               │
+                │   ▼                              ▼               │
+                │ PostgreSQL (source of truth)   UserExporter ─────┼──▶ config-delivery
+                │ Redis (queue, export state)    (file now,        │    service
+                └─────────────────────────────────sftp later)──────┘    (keys, links)
+                                                                          │
+                                DobbyVPN client ◀── subscription link ────┘
 ```
 
 1. A user buys, renews, takes a trial, gets a referral or promo bonus, or an admin edits the
    subscription. remnashop's use case calls the `Remnawave` protocol as before.
 2. `DobbyBackend` (`bot/src/infrastructure/dobby/backend.py`) answers with what the panel used
-   to return: a subscription id, status, expiry and link. The use case stores them in the bot
+   to return: the user's login, status, expiry and link. The use case stores them in the bot
    database as before. The backend then asks for an export.
 3. `UserExportJob` (`export_job.py`) reads the current subscriptions, builds the list of logins
    to serve and hands it to a `UserExporter`. It runs 2 seconds after each change and every
@@ -37,6 +40,33 @@ own instance on their own server. The bot is a copy of remnashop (`bot/`, see
    be monitored.
 5. The bot's only output to the user is the subscription link for their login, no configs.
 
+## Telegram updates
+
+`DOBBY_TELEGRAM_MODE=polling` (default): the bot fetches updates with `getUpdates`
+(`telegram_polling.py`). A request hanging past its timeout is dropped and retried with
+back-off. `DOBBY_TELEGRAM_MODE=webhook` is optional and needs `APP_DOMAIN` with HTTPS in front
+of the bot.
+
+## Payment confirmation
+
+YooKassa does not need to reach the bot. Every trigger ends in `PaymentStatusChecker`
+(`payment_check.py`): ask the YooKassa API for the payment status, then let remnashop's
+`ProcessPayment` apply it.
+
+| Trigger | When |
+|---|---|
+| Return to the bot | The payment page sends the user to `https://t.me/<bot>?start=pay`; the bot checks the user's payments right away |
+| "I paid" button | On the payment message; checks the user's payments |
+| Fast check | Each new payment: every 4 s for 3 minutes, every 15 s until 10 minutes |
+| Sweep | Every minute: all pending payments. After 30 minutes an unpaid payment is given up (CANCELED) |
+| Notification (optional) | Only with a domain. The body is not trusted: only the payment id is taken from it |
+
+`ProcessPayment` moves the transaction with a conditional `UPDATE ... WHERE status IN (...)`,
+so a payment activates or extends a subscription once however many triggers race. A payment
+made after the give-up still completes when the user returns or presses "I paid" (CANCELED can
+move to COMPLETED; the status always comes from the gateway API). The user's check looks 24
+hours back. remnashop's blind 30-minute cleanup of pending transactions skips YooKassa.
+
 ## What is stored where
 
 | Data | Where |
@@ -46,6 +76,7 @@ own instance on their own server. The bot is a copy of remnashop (`bot/`, see
 | Plans and prices | Bot database, `plans` |
 | Payments | Bot database, `transactions`; gateway keys encrypted in `payment_gateways` |
 | Export state (last digest and time, lock) | Redis keys `dobby:export:*` |
+| Payment check schedule | taskiq queue in Redis; nothing extra in the database |
 | Server keys, subscription links, devices, traffic | Config-delivery service |
 
 No new tables are needed: remnashop already keeps every subscription in its own database.
@@ -90,7 +121,9 @@ the login like this, or read from a file the config-delivery service sends back.
 
 | Variable | Meaning |
 |---|---|
-| `APP_DOMAIN`, `BOT_TOKEN`, `BOT_OWNER_ID`, `BOT_SUPPORT_USERNAME`, `DATABASE_PASSWORD`, `APP_CRYPT_KEY`, `BOT_SECRET_TOKEN` | As in remnashop |
+| `BOT_TOKEN`, `BOT_OWNER_ID`, `BOT_SUPPORT_USERNAME`, `DATABASE_PASSWORD`, `APP_CRYPT_KEY`, `BOT_SECRET_TOKEN` | As in remnashop |
+| `APP_DOMAIN` | Optional. Only for webhook mode or payment notifications |
+| `DOBBY_TELEGRAM_MODE` | `polling` (default) or `webhook` |
 | `DOBBY_EXPORT_PATH` | Where the user file is written. Default `/opt/remnashop/data/users.json` |
 | `DOBBY_SUBSCRIPTION_URL_TEMPLATE` | Link template with `{id}` |
 | `DOBBY_FORCE_EXPORT_INTERVAL_SECONDS` | Forced export period, default 3600 |
@@ -105,6 +138,18 @@ Device (HWID) limits, traffic limits and resets, squads, the panel dashboard sec
 importer from other panels and panel webhooks have no effect: the config-delivery service owns
 servers and connections. The code stays in place to keep the diff from upstream small; see
 `docs/remnawave-map.md` for each call.
+
+## Risks
+
+- Telegram's bot terms (section 6.2) require Telegram Stars for digital goods sold in bots. A
+  public statement from Telegram (17–18.11.2026) exempts VPN bots in authoritarian countries,
+  but this is not in the official terms. Users, subscriptions and links therefore live in the
+  owner's database and the config-delivery service, not in Telegram: losing the bot does not
+  lose the subscriptions.
+- During testing the YooKassa API did not answer through a VPN exit abroad and did answer
+  without the VPN. To be checked from the owner's server; fallback: route only the payment
+  client through a proxy in the payment provider's country.
+- Payment providers other than YooKassa still rely on notifications and need a domain.
 
 ## Not decided yet
 
