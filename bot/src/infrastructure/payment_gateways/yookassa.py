@@ -107,9 +107,9 @@ class YookassaGateway(BasePaymentGateway):
     async def handle_webhook(self, request: Request) -> Union[tuple[UUID, TransactionStatus], None]:
         logger.debug("Received YooKassa webhook request")
 
-        if not self._verify_webhook(request):
-            raise PermissionError("Webhook verification failed")
-
+        # The notification only tells us which payment to look at. Its status is read back from
+        # the YooKassa API with the shop's credentials, so a forged notification (the sender IP
+        # header can be spoofed) cannot mark a payment as paid.
         webhook_data = await self._get_webhook_data(request)
         payment_object: dict = webhook_data.get("object", {})
         payment_id_str = payment_object.get("id")
@@ -117,8 +117,8 @@ class YookassaGateway(BasePaymentGateway):
         if not payment_id_str:
             raise ValueError("Required field 'id' is missing")
 
-        status = payment_object.get("status")
         payment_id = UUID(payment_id_str)
+        status = await self._fetch_payment_status(payment_id)
 
         match status:
             case "succeeded":
@@ -126,9 +126,22 @@ class YookassaGateway(BasePaymentGateway):
             case "canceled":
                 transaction_status = TransactionStatus.CANCELED
             case _:
-                raise ValueError(f"Unsupported status: {status}")
+                logger.info(f"YooKassa payment '{payment_id}' is '{status}', nothing to do yet")
+                return None
 
         return payment_id, transaction_status
+
+    async def _fetch_payment_status(self, payment_id: UUID) -> str:
+        response = await self._client.get(f"v3/payments/{payment_id}")
+        if response.status_code == 404:
+            raise PermissionError(f"Payment '{payment_id}' not found in this shop")
+        response.raise_for_status()
+        data = orjson.loads(response.content)
+
+        if data.get("id") != str(payment_id):
+            raise PermissionError(f"YooKassa returned a different payment for '{payment_id}'")
+
+        return str(data.get("status"))
 
     async def _create_payment_payload(self, amount: str, details: str) -> dict[str, Any]:
         return {
@@ -164,12 +177,3 @@ class YookassaGateway(BasePaymentGateway):
             raise KeyError("Invalid response from YooKassa API: missing 'confirmation_url'")
 
         return PaymentResultDto(id=UUID(payment_id_str), url=str(payment_url))
-
-    def _verify_webhook(self, request: Request) -> bool:
-        ip = self._get_ip(request.headers)
-
-        if not self._is_ip_trusted(ip):
-            logger.critical(f"Webhook received from untrusted IP: '{ip}'")
-            return False
-
-        return True
