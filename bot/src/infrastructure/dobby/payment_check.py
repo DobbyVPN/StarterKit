@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from typing import Callable, Optional, Protocol
 from uuid import UUID
 
 from loguru import logger
@@ -29,6 +29,30 @@ def next_fast_poll_delay(age_seconds: float) -> Optional[int]:
     return None
 
 
+# A user may press "I paid" as often as they like; the gateway is asked at most once per
+# payment in this window, repeated presses reuse the last answer.
+USER_CHECK_INTERVAL_SECONDS = 5
+_PENDING = "PENDING"
+
+
+class CheckThrottle(Protocol):
+    async def recent(self, payment_id: UUID) -> Optional[str]: ...
+
+    async def remember(self, payment_id: UUID, status: str, ttl_seconds: int) -> None: ...
+
+
+class NoThrottle(CheckThrottle):
+    async def recent(self, payment_id: UUID) -> Optional[str]:
+        return None
+
+    async def remember(self, payment_id: UUID, status: str, ttl_seconds: int) -> None:
+        return None
+
+
+class NotYourPaymentError(Exception):
+    """The payment does not exist or belongs to another user."""
+
+
 @dataclass
 class UserCheckResult:
     completed: list[UUID] = field(default_factory=list)
@@ -50,11 +74,13 @@ class PaymentStatusChecker:
         transaction_dao: TransactionDao,
         get_payment_gateway_instance: GetPaymentGatewayInstance,
         process_payment: ProcessPayment,
+        throttle: Optional[CheckThrottle] = None,
         now: Callable[[], datetime] = datetime_now,
     ) -> None:
         self.transaction_dao = transaction_dao
         self.get_payment_gateway_instance = get_payment_gateway_instance
         self.process_payment = process_payment
+        self.throttle = throttle or NoThrottle()
         self.now = now
 
     async def check(
@@ -98,28 +124,67 @@ class PaymentStatusChecker:
             return None
         return next_fast_poll_delay((self.now() - transaction.created_at).total_seconds())
 
-    async def check_user(self, user_id: int) -> UserCheckResult:
-        """The user says they paid: check their pending and recently given-up payments."""
+    async def check_user(self, user_id: int, payment_id: Optional[UUID] = None) -> UserCheckResult:
+        """The user says they paid ("I paid" button, return from the payment page).
+
+        Pressing it never activates anything by itself: only a status the gateway API reports
+        does. With payment_id, only that payment is checked, and only if it is the user's own.
+        Without it, the user's pending and recently given-up payments are checked. Each payment
+        is asked about at most once per USER_CHECK_INTERVAL_SECONDS.
+        """
         result = UserCheckResult()
-        threshold = self.now() - LATE_PAYMENT_WINDOW
-
-        for transaction in await self.transaction_dao.get_by_user(user_id):
-            if transaction.is_test or not transaction.created_at:
-                continue
-            if transaction.created_at < threshold:
-                continue
-            if transaction.status not in (TransactionStatus.PENDING, TransactionStatus.CANCELED):
+        for transaction in await self._user_transactions(user_id, payment_id):
+            if transaction.status == TransactionStatus.COMPLETED:
+                result.completed.append(transaction.payment_id)
                 continue
 
-            status = await self.check(transaction)
+            status = await self._throttled_check(transaction)
             if status == TransactionStatus.COMPLETED:
                 result.completed.append(transaction.payment_id)
             elif status is None:
                 result.pending.append(transaction.payment_id)
-            elif transaction.status == TransactionStatus.PENDING:
+            elif transaction.status == TransactionStatus.PENDING or payment_id is not None:
                 result.canceled.append(transaction.payment_id)
 
         return result
+
+    async def _user_transactions(
+        self, user_id: int, payment_id: Optional[UUID]
+    ) -> list[TransactionDto]:
+        """The user's own payments worth checking; the given one only if it is theirs."""
+        if payment_id is not None:
+            transaction = await self.transaction_dao.get_by_payment_id(payment_id)
+            if not transaction or transaction.user_id != user_id:
+                raise NotYourPaymentError(str(payment_id))
+            candidates = [transaction]
+            wanted: tuple[TransactionStatus, ...] = (
+                TransactionStatus.PENDING,
+                TransactionStatus.CANCELED,
+                TransactionStatus.COMPLETED,
+            )
+        else:
+            candidates = await self.transaction_dao.get_by_user(user_id)
+            wanted = (TransactionStatus.PENDING, TransactionStatus.CANCELED)
+
+        threshold = self.now() - LATE_PAYMENT_WINDOW
+        return [
+            t
+            for t in candidates
+            if not t.is_test and t.created_at and t.created_at >= threshold and t.status in wanted
+        ]
+
+    async def _throttled_check(self, transaction: TransactionDto) -> Optional[TransactionStatus]:
+        cached = await self.throttle.recent(transaction.payment_id)
+        if cached is not None:
+            return None if cached == _PENDING else TransactionStatus(cached)
+
+        status = await self.check(transaction)
+        await self.throttle.remember(
+            transaction.payment_id,
+            status.value if status else _PENDING,
+            USER_CHECK_INTERVAL_SECONDS,
+        )
+        return status
 
     async def sweep(self) -> None:
         """Every minute: check pending payments, give up on those older than GIVE_UP_AFTER."""

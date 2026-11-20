@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -8,10 +10,15 @@ from dishka.integrations.aiogram_dialog import inject as inject_dialog
 from loguru import logger
 
 from src.application.common import Notifier
-from src.application.dto import TelegramUserDto
+from src.application.dto import MessagePayloadDto, TelegramUserDto
 from src.core.constants import USER_KEY
 from src.core.enums import Deeplink
-from src.infrastructure.dobby.payment_check import PaymentStatusChecker, UserCheckResult
+from src.infrastructure.dobby.payment_check import (
+    NotYourPaymentError,
+    PaymentStatusChecker,
+    UserCheckResult,
+)
+from src.telegram.keyboards import get_buy_keyboard
 from src.telegram.routers.menu.handlers import on_start_dialog
 
 router = Router(name=__name__)
@@ -22,11 +29,18 @@ async def _report(user: TelegramUserDto, result: UserCheckResult, notifier: Noti
     if result.completed:
         # ProcessPayment already moved the user to the success screen.
         return True
-    if result.pending:
-        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-pending")
-        return True
-    if result.canceled:
-        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-canceled")
+    if result.pending or result.canceled:
+        key = "payment-pending" if result.pending else "payment-canceled"
+        await notifier.notify_user(
+            user,
+            payload=MessagePayloadDto(
+                i18n_key=f"ntf-subscription.{key}",
+                # Opens the purchase again; a recent unpaid payment is reused, so this leads
+                # back to the same payment page.
+                reply_markup=get_buy_keyboard(),
+                delete_after=None,
+            ),
+        )
         return True
     return False
 
@@ -60,6 +74,11 @@ async def on_paid_button(
     """The "I paid" button on the payment message."""
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     logger.info(f"{user.log} Pressed 'I paid'")
-    result = await checker.check_user(user.id)
+    payment_id = dialog_manager.dialog_data.get("payment_id")
+    try:
+        result = await checker.check_user(user.id, UUID(str(payment_id)) if payment_id else None)
+    except NotYourPaymentError:
+        logger.warning(f"{user.log} Tried to check a payment that is not theirs")
+        result = UserCheckResult()
     if not await _report(user, result, notifier):
         await notifier.notify_user(user, i18n_key="ntf-subscription.payment-not-found")

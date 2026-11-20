@@ -2,10 +2,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
+import pytest
+
 from src.application.dto import PlanSnapshotDto, PriceDetailsDto, TransactionDto
 from src.core.enums import Currency, PaymentGatewayType, PurchaseType, TransactionStatus
 from src.infrastructure.dobby.payment_check import (
     GIVE_UP_AFTER,
+    NotYourPaymentError,
     PaymentStatusChecker,
     next_fast_poll_delay,
 )
@@ -188,3 +191,88 @@ async def test_fast_check_continues_while_pending() -> None:
     tx = make_tx(age=timedelta(seconds=10))
     checker, _, _ = make_checker([tx], {})
     assert await checker.fast_check(tx.payment_id) == 4
+
+
+class MemoryThrottle:
+    def __init__(self) -> None:
+        self.values: dict[UUID, str] = {}
+
+    async def recent(self, payment_id: UUID) -> Optional[str]:
+        return self.values.get(payment_id)
+
+    async def remember(self, payment_id: UUID, status: str, ttl_seconds: int) -> None:
+        self.values[payment_id] = status
+
+
+def make_throttled(
+    transactions: list[TransactionDto], statuses: dict[UUID, Optional[TransactionStatus]]
+) -> tuple[PaymentStatusChecker, FakeGateway, FakeProcessPayment, MemoryThrottle]:
+    gateway, process, throttle = FakeGateway(statuses), FakeProcessPayment(), MemoryThrottle()
+    checker = PaymentStatusChecker(
+        FakeTransactionDao(transactions),  # type: ignore[arg-type]
+        FakeGetGateway(gateway),  # type: ignore[arg-type]
+        process,  # type: ignore[arg-type]
+        throttle=throttle,
+        now=lambda: NOW,
+    )
+    return checker, gateway, process, throttle
+
+
+async def test_i_paid_without_paying_activates_nothing() -> None:
+    tx = make_tx()
+    checker, gateway, process, _ = make_throttled([tx], {tx.payment_id: None})
+
+    result = await checker.check_user(user_id=1, payment_id=tx.payment_id)
+
+    assert result.pending == [tx.payment_id]
+    assert result.completed == []
+    assert process.applied == []
+    assert gateway.calls == 1
+
+
+async def test_i_paid_with_no_payments_at_all() -> None:
+    checker, gateway, process, _ = make_throttled([], {})
+    result = await checker.check_user(user_id=1)
+    assert result.pending == result.completed == result.canceled == []
+    assert gateway.calls == 0
+    assert process.applied == []
+
+
+async def test_rapid_presses_ask_the_gateway_once() -> None:
+    tx = make_tx()
+    checker, gateway, _, _ = make_throttled([tx], {tx.payment_id: None})
+
+    for _ in range(10):
+        result = await checker.check_user(user_id=1, payment_id=tx.payment_id)
+        assert result.pending == [tx.payment_id]
+
+    assert gateway.calls == 1
+
+
+async def test_presses_after_the_window_ask_again() -> None:
+    tx = make_tx()
+    checker, gateway, process, throttle = make_throttled([tx], {tx.payment_id: None})
+    await checker.check_user(user_id=1, payment_id=tx.payment_id)
+
+    throttle.values.clear()  # the window expired
+    gateway.statuses[tx.payment_id] = TransactionStatus.COMPLETED
+    result = await checker.check_user(user_id=1, payment_id=tx.payment_id)
+
+    assert result.completed == [tx.payment_id]
+    assert gateway.calls == 2
+    assert process.applied == [(tx.payment_id, TransactionStatus.COMPLETED)]
+
+
+async def test_another_users_payment_is_refused() -> None:
+    theirs = make_tx(user_id=2)
+    checker, gateway, process, _ = make_throttled(
+        [theirs], {theirs.payment_id: TransactionStatus.COMPLETED}
+    )
+
+    with pytest.raises(NotYourPaymentError):
+        await checker.check_user(user_id=1, payment_id=theirs.payment_id)
+    with pytest.raises(NotYourPaymentError):
+        await checker.check_user(user_id=1, payment_id=uuid4())
+
+    assert gateway.calls == 0
+    assert process.applied == []

@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from dishka import Provider, Scope, provide
@@ -15,7 +16,7 @@ from .config import DobbyConfig
 from .export_job import RedisExportState, UserExportJob
 from .exporter import FileUserExporter, UserExporter
 from .links import SubscriptionLinkProvider, TemplateLinkProvider
-from .payment_check import FAST_POLL_SCHEDULE, PaymentStatusChecker
+from .payment_check import FAST_POLL_SCHEDULE, CheckThrottle, PaymentStatusChecker
 from .snapshot import load_snapshot
 
 
@@ -27,6 +28,18 @@ class TaskiqExportTrigger(ExportTrigger):
         )
 
         await export_users_after_change_task.kiq()  # type: ignore[call-overload]
+
+
+class RedisCheckThrottle(CheckThrottle):
+    def __init__(self, redis: Redis) -> None:
+        self.redis = redis
+
+    async def recent(self, payment_id: UUID) -> Optional[str]:
+        value = await self.redis.get(f"dobby:paycheck:{payment_id}")
+        return value.decode() if isinstance(value, bytes) else value
+
+    async def remember(self, payment_id: UUID, status: str, ttl_seconds: int) -> None:
+        await self.redis.set(f"dobby:paycheck:{payment_id}", status, ex=ttl_seconds)
 
 
 class TaskiqPaymentWatcher(PaymentWatcher):
@@ -69,8 +82,14 @@ class DobbyProvider(Provider):
         transaction_dao: TransactionDao,
         get_payment_gateway_instance: GetPaymentGatewayInstance,
         process_payment: ProcessPayment,
+        redis: Redis,
     ) -> PaymentStatusChecker:
-        return PaymentStatusChecker(transaction_dao, get_payment_gateway_instance, process_payment)
+        return PaymentStatusChecker(
+            transaction_dao,
+            get_payment_gateway_instance,
+            process_payment,
+            throttle=RedisCheckThrottle(redis),
+        )
 
     @provide(scope=Scope.REQUEST)
     def get_backend(
