@@ -28,7 +28,7 @@ from src.core.constants import REMNAWAVE_MAX_VERSION
 from src.core.utils.i18n_helpers import i18n_format_seconds
 from src.core.utils.time import get_uptime
 from src.infrastructure.dobby.config import DobbyConfig
-from src.infrastructure.dobby.dev_polling import run_dev_polling
+from src.infrastructure.dobby.telegram_polling import run_polling
 from src.infrastructure.redis.keys import WelcomedVersionKey
 from src.infrastructure.services import (
     CommandService,
@@ -79,11 +79,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await create_default_settings.system()
         settings = await settings_dao.get()
         allowed_updates = dispatcher.resolve_used_update_types()
-        dev_polling = DobbyConfig().dev_polling
+        use_polling = DobbyConfig().telegram_mode == "polling"
         bot = await startup_container.get(Bot)
 
-        if dev_polling:
+        if use_polling:
             webhook_info: Optional[WebhookInfo] = None
+        elif not config.domain.get_secret_value():
+            raise RuntimeError("DOBBY_TELEGRAM_MODE=webhook needs APP_DOMAIN")
         else:
             webhook_info = await webhook_service.setup_webhook(allowed_updates)
 
@@ -101,8 +103,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await telegram_webhook_endpoint.startup()
 
     polling_task = (
-        asyncio.create_task(run_dev_polling(bot, telegram_webhook_endpoint, allowed_updates))
-        if dev_polling
+        asyncio.create_task(run_polling(bot, telegram_webhook_endpoint, allowed_updates))
+        if use_polling
         else None
     )
 

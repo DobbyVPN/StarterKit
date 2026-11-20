@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from src.core.config.base import BaseConfig
 
@@ -14,5 +15,6 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     # A full export is forced at least this often even if nothing changed.
     force_export_interval_seconds: int = 3600
 
-    # Local development only: poll Telegram instead of using a webhook (no public address).
-    dev_polling: bool = False
+    # How the bot receives Telegram updates. "polling" (default) needs no domain and no inbound
+    # connections. "webhook" needs APP_DOMAIN with HTTPS in front of the bot.
+    telegram_mode: Literal["polling", "webhook"] = "polling"

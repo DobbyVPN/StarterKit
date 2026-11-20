@@ -22,7 +22,9 @@ from .validators import validate_not_change_me
 
 
 class AppConfig(BaseConfig, env_prefix="APP_"):
-    domain: SecretStr
+    # Optional: without a domain the bot polls Telegram and confirms payments by asking the
+    # gateway API (see docs/architecture.md). A domain is needed only for webhook mode.
+    domain: SecretStr = SecretStr("")
     host: str = "0.0.0.0"
     port: int = 5000
 
@@ -93,6 +95,9 @@ class AppConfig(BaseConfig, env_prefix="APP_"):
     @field_validator("domain")
     @classmethod
     def validate_domain(cls, field: SecretStr, info: FieldValidationInfo) -> SecretStr:
+        if not field.get_secret_value():
+            return field
+
         validate_not_change_me(field, info)
 
         if not is_valid_domain(field.get_secret_value()):
