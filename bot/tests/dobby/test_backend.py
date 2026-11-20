@@ -188,3 +188,16 @@ async def test_lookup_by_login_prefers_the_current_subscription() -> None:
 
     assert found is not None
     assert found.status == SubscriptionStatus.ACTIVE
+
+
+async def test_backend_user_has_the_fields_admin_screens_read() -> None:
+    # Attributes remnashop reads from a panel user (admin subscription screen, sync screen).
+    login = uuid4()
+    backend, _ = make_backend([make_subscription(login, SubscriptionStatus.ACTIVE)])
+    found = await backend.get_user_by_uuid(login)
+    assert found is not None
+    assert found.user_traffic.online_at is None
+    assert found.first_connected_at is None
+    assert found.used_traffic_bytes == 0
+    assert found.updated_at is None
+    assert found.active_internal_squads == []

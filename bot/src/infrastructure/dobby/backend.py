@@ -30,6 +30,15 @@ class ExportTrigger(Protocol):
 
 
 @dataclass(kw_only=True)
+class BackendUserTraffic:
+    used_traffic_bytes: int = 0
+    lifetime_used_traffic_bytes: int = 0
+    online_at: Optional[datetime] = None
+    first_connected_at: Optional[datetime] = None
+    last_connected_node_uuid: Optional[UUID] = None
+
+
+@dataclass(kw_only=True)
 class BackendUser:
     """What remnashop reads from a panel user, filled from the bot's own data.
 
@@ -54,6 +63,8 @@ class BackendUser:
     online_at: Optional[datetime] = None
     first_connected_at: Optional[datetime] = None
     last_connected_node_uuid: Optional[UUID] = None
+    user_traffic: BackendUserTraffic = field(default_factory=BackendUserTraffic)
+    updated_at: Optional[datetime] = None
 
 
 # The protocol is typed with remnapy's UserResponseDto. BackendUser has the fields remnashop reads
