@@ -3,6 +3,10 @@ from typing import Literal
 
 from src.core.config.base import BaseConfig
 
+# Renewal reminders, hours before expiry; one more is sent at expiry. The single place for the
+# defaults (3 days and 1 day). Owners override with DOBBY_REMINDER_HOURS_BEFORE, e.g. [72, 24].
+DEFAULT_REMINDER_HOURS_BEFORE: tuple[int, ...] = (72, 24)
+
 
 class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     # Where the file exporter writes the user list. Placeholder until the sftp target is known.
@@ -18,3 +22,5 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     # How the bot receives Telegram updates. "polling" (default) needs no domain and no inbound
     # connections. "webhook" needs APP_DOMAIN with HTTPS in front of the bot.
     telegram_mode: Literal["polling", "webhook"] = "polling"
+
+    reminder_hours_before: list[int] = list(DEFAULT_REMINDER_HOURS_BEFORE)

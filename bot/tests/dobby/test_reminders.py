@@ -8,14 +8,14 @@ from redis.asyncio import Redis
 
 from src.application.dto import UserDto
 from src.application.events import SubscriptionExpiredEvent, SubscriptionExpiresEvent
-from src.application.events.user import SubscriptionExpiredAgoEvent
 from src.core.config import AppConfig
 from src.core.enums import SubscriptionStatus, UserNotificationType
+from src.infrastructure.dobby.config import DobbyConfig
 from src.infrastructure.dobby.reminders import (
+    EXPIRED,
     RedisReminderLog,
     ReminderRow,
     RenewalReminders,
-    Stage,
     reminder_key,
     stage_for,
 )
@@ -51,12 +51,23 @@ class Users:
 
 
 def job(
-    rows: list[ReminderRow], log: MemoryLog, publisher: Publisher, now: datetime = NOW
+    rows: list[ReminderRow],
+    log: MemoryLog,
+    publisher: Publisher,
+    now: datetime = NOW,
+    hours_before: tuple[int, ...] = (72, 24),
 ) -> RenewalReminders:
-    async def load(at: datetime) -> Iterable[ReminderRow]:
-        return list(rows)
+    async def load(at: datetime, look_ahead: timedelta) -> Iterable[ReminderRow]:
+        return [r for r in rows if r.expire_at <= at + look_ahead]
 
-    return RenewalReminders(load, Users(), publisher, log, now=lambda: now)  # type: ignore[arg-type]
+    return RenewalReminders(
+        load,
+        Users(),  # type: ignore[arg-type]
+        publisher,  # type: ignore[arg-type]
+        log,
+        hours_before=hours_before,
+        now=lambda: now,
+    )
 
 
 def row(expire_at: datetime, is_trial: bool = False, sub: Optional[UUID] = None) -> ReminderRow:
@@ -67,21 +78,29 @@ def row(expire_at: datetime, is_trial: bool = False, sub: Optional[UUID] = None)
     ("left", "stage"),
     [
         (80 * H, None),
-        (72 * H, Stage.IN_3_DAYS),
-        (49 * H, Stage.IN_3_DAYS),
-        (48 * H, Stage.IN_2_DAYS),
-        (25 * H, Stage.IN_2_DAYS),
-        (24 * H, Stage.IN_1_DAY),
-        (timedelta(minutes=1), Stage.IN_1_DAY),
-        (timedelta(0), Stage.EXPIRED),
-        (-23 * H, Stage.EXPIRED),
-        (-24 * H, Stage.EXPIRED_1_DAY_AGO),
-        (-47 * H, Stage.EXPIRED_1_DAY_AGO),
-        (-48 * H, None),
+        (72 * H + timedelta(seconds=1), None),
+        (72 * H, "before_72h"),
+        (48 * H, "before_72h"),  # no 48 h reminder
+        (25 * H, "before_72h"),
+        (24 * H, "before_24h"),
+        (timedelta(minutes=1), "before_24h"),
+        (timedelta(0), EXPIRED),
+        (-23 * H, EXPIRED),
+        (-24 * H, None),
     ],
 )
-def test_each_threshold(left: timedelta, stage: Optional[Stage]) -> None:
+def test_each_threshold(left: timedelta, stage: Optional[str]) -> None:
     assert stage_for(NOW + left, NOW) == stage
+
+
+def test_defaults_are_3_days_and_1_day() -> None:
+    assert DobbyConfig().reminder_hours_before == [72, 24]
+
+
+def test_custom_thresholds() -> None:
+    assert stage_for(NOW + 100 * H, NOW, hours_before=(120, 12)) == "before_120h"
+    assert stage_for(NOW + 11 * H, NOW, hours_before=(120, 12)) == "before_12h"
+    assert stage_for(NOW + 130 * H, NOW, hours_before=(120, 12)) is None
 
 
 @pytest.mark.parametrize("left", [timedelta(seconds=1), timedelta(0), -timedelta(seconds=1)])
@@ -90,29 +109,21 @@ def test_expired_reminder_matches_the_export_cut_off(left: timedelta) -> None:
     exported = build_snapshot(
         [SubscriptionRow(sub, SubscriptionStatus.ACTIVE, NOW + left, False)], now=NOW
     )
-    expired_reminder = stage_for(NOW + left, NOW) == Stage.EXPIRED
+    expired_reminder = stage_for(NOW + left, NOW) == EXPIRED
     assert expired_reminder == (exported == [])
 
 
 async def test_events_carry_remnashop_texts_and_settings() -> None:
     publisher = Publisher()
-    rows = [
-        row(NOW + 60 * H),
-        row(NOW + 30 * H),
-        row(NOW + 2 * H, is_trial=True),
-        row(NOW - H),
-        row(NOW - 30 * H),
-    ]
-    assert await job(rows, MemoryLog(), publisher).run() == 5
+    rows = [row(NOW + 60 * H), row(NOW + 2 * H, is_trial=True), row(NOW - H)]
+    assert await job(rows, MemoryLog(), publisher).run() == 3
 
-    in3, in2, in1, expired, ago = publisher.events
+    in3, in1, expired = publisher.events
     assert isinstance(in3, SubscriptionExpiresEvent) and in3.day == 3
     assert in3.notification_type == UserNotificationType.EXPIRES_IN_3_DAYS
-    assert isinstance(in2, SubscriptionExpiresEvent) and in2.day == 2
-    assert in2.notification_type == UserNotificationType.EXPIRES_IN_2_DAYS
     assert isinstance(in1, SubscriptionExpiresEvent) and in1.day == 1 and in1.is_trial
+    assert in1.notification_type == UserNotificationType.EXPIRES_IN_1_DAY
     assert isinstance(expired, SubscriptionExpiredEvent)
-    assert isinstance(ago, SubscriptionExpiredAgoEvent)
 
 
 async def test_no_duplicates_across_runs_and_restarts() -> None:
@@ -126,20 +137,17 @@ async def test_no_duplicates_across_runs_and_restarts() -> None:
     assert len(publisher.events) == 1
 
 
-async def test_each_stage_once_as_time_passes() -> None:
+async def test_exactly_three_reminders_as_time_passes() -> None:
     log, publisher = MemoryLog(), Publisher()
-    expire_at = NOW + 72 * H
-    rows = [row(expire_at)]
-    for minutes in range(0, 5 * 24 * 60, 30):
+    rows = [row(NOW + 100 * H)]
+    for minutes in range(0, 7 * 24 * 60, 15):
         await job(rows, log, publisher, now=NOW + timedelta(minutes=minutes)).run()
 
     kinds = [(type(e).__name__, getattr(e, "day", None)) for e in publisher.events]
     assert kinds == [
         ("SubscriptionExpiresEvent", 3),
-        ("SubscriptionExpiresEvent", 2),
         ("SubscriptionExpiresEvent", 1),
         ("SubscriptionExpiredEvent", None),
-        ("SubscriptionExpiredAgoEvent", 1),
     ]
 
 
@@ -164,10 +172,10 @@ async def test_only_latest_stage_after_downtime() -> None:
 
 def test_key_depends_on_subscription_expiry_and_stage() -> None:
     sub = uuid4()
-    a = reminder_key(row(NOW, sub=sub), Stage.IN_1_DAY)
-    assert a != reminder_key(row(NOW + H, sub=sub), Stage.IN_1_DAY)
-    assert a != reminder_key(row(NOW, sub=sub), Stage.EXPIRED)
-    assert a == reminder_key(row(NOW, sub=sub), Stage.IN_1_DAY)
+    a = reminder_key(row(NOW, sub=sub), "before_24h")
+    assert a != reminder_key(row(NOW + H, sub=sub), "before_24h")
+    assert a != reminder_key(row(NOW, sub=sub), EXPIRED)
+    assert a == reminder_key(row(NOW, sub=sub), "before_24h")
 
 
 @pytest.mark.skipif(os.getenv("DOBBY_DB_TESTS") != "1", reason="needs Redis")

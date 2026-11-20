@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from enum import StrEnum
 from typing import Awaitable, Callable, Iterable, NamedTuple, Optional, Protocol
 from uuid import UUID
 
@@ -12,50 +11,40 @@ from src.application.common import EventPublisher
 from src.application.common.dao import UserDao
 from src.application.events import SubscriptionExpiredEvent, SubscriptionExpiresEvent
 from src.application.events.base import UserEvent
-from src.application.events.user import SubscriptionExpiredAgoEvent
 from src.core.enums import SubscriptionStatus, UserNotificationType
 from src.core.utils.time import datetime_now
 from src.infrastructure.database.models.subscription import Subscription
 from src.infrastructure.database.models.user import User
 
+from .config import DEFAULT_REMINDER_HOURS_BEFORE
 from .snapshot import is_expired
 
 HOUR = timedelta(hours=1)
 
+# The expiry reminder is still sent this long after expiry (for example after downtime).
+EXPIRED_GRACE = 24 * HOUR
 
-class Stage(StrEnum):
-    IN_3_DAYS = "in_3_days"
-    IN_2_DAYS = "in_2_days"
-    IN_1_DAY = "in_1_day"
-    EXPIRED = "expired"
-    EXPIRED_1_DAY_AGO = "expired_1_day_ago"
+EXPIRED = "expired"
 
 
-# How far around expiry reminders are looked at; older expiries are not reminded about.
-LOOK_AHEAD = 72 * HOUR
-LOOK_BACK = 48 * HOUR
+def before_stage(hours: int) -> str:
+    return f"before_{hours}h"
 
 
-def stage_for(expire_at: datetime, now: datetime) -> Optional[Stage]:
-    """The reminder due now. Only the latest stage counts: after downtime the bot does not
-    send several reminders at once. "Expired" starts exactly when the user drops out of the
-    export file."""
+def stage_for(
+    expire_at: datetime, now: datetime, hours_before: Iterable[int] = DEFAULT_REMINDER_HOURS_BEFORE
+) -> Optional[str]:
+    """The reminder due now: "before_<N>h" or "expired".
+
+    Only the latest due stage counts, so after downtime the bot does not send several
+    reminders at once. "expired" starts exactly when the user drops out of the export file.
+    """
     if is_expired(expire_at, now):
-        overdue = now - expire_at
-        if overdue < 24 * HOUR:
-            return Stage.EXPIRED
-        if overdue < LOOK_BACK:
-            return Stage.EXPIRED_1_DAY_AGO
-        return None
+        return EXPIRED if now - expire_at < EXPIRED_GRACE else None
 
     left = expire_at - now
-    if left > LOOK_AHEAD:
-        return None
-    if left > 48 * HOUR:
-        return Stage.IN_3_DAYS
-    if left > 24 * HOUR:
-        return Stage.IN_2_DAYS
-    return Stage.IN_1_DAY
+    due = [h for h in hours_before if left <= h * HOUR]
+    return before_stage(min(due)) if due else None
 
 
 class ReminderRow(NamedTuple):
@@ -72,8 +61,8 @@ class ReminderLog(Protocol):
 
 
 class RedisReminderLog(ReminderLog):
-    # Longer than the whole reminder window, so a key outlives every stage it guards.
-    TTL_SECONDS = int((LOOK_AHEAD + LOOK_BACK + 24 * HOUR).total_seconds())
+    # Longer than any reminder window, so a key outlives every stage it guards.
+    TTL_SECONDS = int(timedelta(days=30).total_seconds())
 
     def __init__(self, redis: Redis) -> None:
         self.redis = redis
@@ -84,32 +73,36 @@ class RedisReminderLog(ReminderLog):
         )
 
 
-def reminder_key(row: ReminderRow, stage: Stage) -> str:
+def reminder_key(row: ReminderRow, stage: str) -> str:
     # The expiry is part of the key: a renewal moves it, so the reminders start over.
     return f"{row.subscription_id}:{int(row.expire_at.timestamp())}:{stage}"
 
 
-def build_event(stage: Stage, row: ReminderRow, user: object) -> UserEvent:
-    match stage:
-        case Stage.IN_3_DAYS | Stage.IN_2_DAYS | Stage.IN_1_DAY:
-            day, notification_type = {
-                Stage.IN_3_DAYS: (3, UserNotificationType.EXPIRES_IN_3_DAYS),
-                Stage.IN_2_DAYS: (2, UserNotificationType.EXPIRES_IN_2_DAYS),
-                Stage.IN_1_DAY: (1, UserNotificationType.EXPIRES_IN_1_DAY),
-            }[stage]
-            return SubscriptionExpiresEvent(
-                user=user,  # type: ignore[arg-type]
-                is_trial=row.is_trial,
-                day=day,
-                notification_type=notification_type,
-            )
-        case Stage.EXPIRED:
-            return SubscriptionExpiredEvent(user=user, is_trial=row.is_trial)  # type: ignore[arg-type]
-        case Stage.EXPIRED_1_DAY_AGO:
-            return SubscriptionExpiredAgoEvent(user=user, is_trial=row.is_trial, day=1)  # type: ignore[arg-type]
+_DAY_TYPES = {
+    3: UserNotificationType.EXPIRES_IN_3_DAYS,
+    2: UserNotificationType.EXPIRES_IN_2_DAYS,
+    1: UserNotificationType.EXPIRES_IN_1_DAY,
+}
 
 
-async def load_reminder_rows(session: AsyncSession, now: datetime) -> list[ReminderRow]:
+def build_event(stage: str, row: ReminderRow, user: object) -> UserEvent:
+    if stage == EXPIRED:
+        return SubscriptionExpiredEvent(user=user, is_trial=row.is_trial)  # type: ignore[arg-type]
+
+    hours = int(stage.removeprefix("before_").removesuffix("h"))
+    # remnashop's text says "in N days"; its notification switches exist for 1, 2 and 3 days.
+    day = max(1, round(hours / 24))
+    return SubscriptionExpiresEvent(
+        user=user,  # type: ignore[arg-type]
+        is_trial=row.is_trial,
+        day=day,
+        notification_type=_DAY_TYPES.get(min(day, 3), UserNotificationType.EXPIRES_IN_3_DAYS),
+    )
+
+
+async def load_reminder_rows(
+    session: AsyncSession, now: datetime, look_ahead: timedelta
+) -> list[ReminderRow]:
     """Current, active subscriptions of users who are not blocked, near their expiry."""
     stmt = (
         select(
@@ -123,8 +116,8 @@ async def load_reminder_rows(session: AsyncSession, now: datetime) -> list[Remin
             Subscription.status == SubscriptionStatus.ACTIVE,
             User.is_blocked.is_(False),
             User.is_bot_blocked.is_(False),
-            Subscription.expire_at > now - LOOK_BACK,
-            Subscription.expire_at <= now + LOOK_AHEAD,
+            Subscription.expire_at > now - EXPIRED_GRACE,
+            Subscription.expire_at <= now + look_ahead,
         )
     )
     result = await session.execute(stmt)
@@ -132,7 +125,9 @@ async def load_reminder_rows(session: AsyncSession, now: datetime) -> list[Remin
 
 
 class RenewalReminders:
-    """Sends the renewal reminders the Remnawave panel used to trigger by webhooks.
+    """Sends renewal reminders: before expiry (by default 3 days and 1 day) and at expiry.
+
+    The Remnawave panel used to trigger these by webhooks.
 
     Runs every minute. Each reminder goes out at most once per subscription period: what was
     sent is recorded in Redis (persistent), keyed by subscription and expiry. remnashop's
@@ -141,12 +136,14 @@ class RenewalReminders:
 
     def __init__(
         self,
-        load_rows: Callable[[datetime], Awaitable[Iterable[ReminderRow]]],
+        load_rows: Callable[[datetime, timedelta], Awaitable[Iterable[ReminderRow]]],
         user_dao: UserDao,
         event_publisher: EventPublisher,
         log: ReminderLog,
+        hours_before: Iterable[int] = DEFAULT_REMINDER_HOURS_BEFORE,
         now: Callable[[], datetime] = datetime_now,
     ) -> None:
+        self.hours_before = tuple(sorted(set(hours_before), reverse=True))
         self.load_rows = load_rows
         self.user_dao = user_dao
         self.event_publisher = event_publisher
@@ -156,8 +153,9 @@ class RenewalReminders:
     async def run(self) -> int:
         now = self.now()
         sent = 0
-        for row in await self.load_rows(now):
-            stage = stage_for(row.expire_at, now)
+        look_ahead = max(self.hours_before, default=0) * HOUR
+        for row in await self.load_rows(now, look_ahead):
+            stage = stage_for(row.expire_at, now, self.hours_before)
             if stage is None or not await self.log.mark_once(reminder_key(row, stage)):
                 continue
             user = await self.user_dao.get_by_id(row.user_id)

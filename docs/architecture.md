@@ -76,19 +76,26 @@ longer be paid is not reused.
 
 The Remnawave panel used to trigger them by webhooks. `RenewalReminders` (`reminders.py`) runs
 every minute over `subscriptions.expire_at` and publishes remnashop's own events, so its texts,
-the renew/buy button and the per-type switches in the admin notification settings apply:
+the renew/buy button and the per-type switches in the admin notification settings apply.
+Three reminders by default:
 
-| Stage | When |
+| Reminder | When |
 |---|---|
-| Expires in 3 / 2 / 1 days | 72–48 h, 48–24 h, under 24 h before expiry |
-| Expired | From the expiry until 24 h after: the same cut-off (`is_expired`) and the same minute cadence as the export, so the message arrives when the user drops out of the file |
-| Expired a day ago | 24–48 h after expiry |
+| Expires in 3 days | From 72 h before expiry |
+| Expires in 1 day | From 24 h before expiry |
+| Expired | At expiry, until 24 h after: the same cut-off (`is_expired`) and the same minute cadence as the export, so it arrives when the user drops out of the file |
+
+The hours before expiry are set in one place: `DEFAULT_REMINDER_HOURS_BEFORE` in
+`bot/src/infrastructure/dobby/config.py` (72 and 24), overridable per owner with
+`DOBBY_REMINDER_HOURS_BEFORE` (a JSON list, e.g. `[72, 24]`). The text says "in N days",
+rounded from the hours.
 
 Only current, active subscriptions of users who are not blocked (by an admin or by blocking the
-bot) get reminders; trials get them with the trial wording, as in remnashop. Each stage is sent
-once per subscription period: what was sent is kept in Redis (persistent) under the
-subscription id, its expiry and the stage, so a restart does not repeat it and a renewal, which
-moves the expiry, starts the reminders over. After downtime only the latest due stage is sent.
+bot) get reminders; trials get them with the trial wording, as in remnashop. Each reminder is
+sent once per subscription period: what was sent is kept in Redis (persistent) under the
+subscription id, its expiry and the reminder, so a restart does not repeat it and a renewal,
+which moves the expiry, starts the reminders over. After downtime only the latest due reminder
+is sent.
 
 ## What is stored where
 
@@ -150,6 +157,7 @@ the login like this, or read from a file the config-delivery service sends back.
 | `DOBBY_EXPORT_PATH` | Where the user file is written. Default `/opt/remnashop/data/users.json` |
 | `DOBBY_SUBSCRIPTION_URL_TEMPLATE` | Link template with `{id}` |
 | `DOBBY_FORCE_EXPORT_INTERVAL_SECONDS` | Forced export period, default 3600 |
+| `DOBBY_REMINDER_HOURS_BEFORE` | Renewal reminders before expiry, hours, default `[72, 24]` |
 | `REMNAWAVE_TOKEN`, `REMNAWAVE_WEBHOOK_SECRET` | Still required by remnashop's config validation; any value works. To be removed |
 
 **Admin menu in the bot** (remnashop as is): plans, prices, trial, payment gateways and their

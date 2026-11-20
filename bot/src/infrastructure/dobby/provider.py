@@ -109,12 +109,14 @@ class DobbyProvider(Provider):
         user_dao: UserDao,
         event_publisher: EventPublisher,
         redis: Redis,
+        config: DobbyConfig,
     ) -> RenewalReminders:
         return RenewalReminders(
-            load_rows=lambda now: load_reminder_rows(session, now),
+            load_rows=lambda now, look_ahead: load_reminder_rows(session, now, look_ahead),
             user_dao=user_dao,
             event_publisher=event_publisher,
             log=RedisReminderLog(redis),
+            hours_before=config.reminder_hours_before,
         )
 
     @provide(scope=Scope.REQUEST)
