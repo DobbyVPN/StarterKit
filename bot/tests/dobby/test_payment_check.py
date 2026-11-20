@@ -276,3 +276,14 @@ async def test_another_users_payment_is_refused() -> None:
 
     assert gateway.calls == 0
     assert process.applied == []
+
+
+async def test_fast_check_survives_a_dropped_connection() -> None:
+    tx = make_tx(age=timedelta(seconds=10))
+    checker, gateway, _ = make_checker([tx], {})
+
+    async def broken(payment_id: UUID) -> Optional[TransactionStatus]:
+        raise ConnectionError("server disconnected")
+
+    gateway.fetch_transaction_status = broken  # type: ignore[method-assign]
+    assert await checker.fast_check(tx.payment_id) == 4

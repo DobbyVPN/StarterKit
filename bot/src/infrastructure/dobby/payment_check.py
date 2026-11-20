@@ -120,7 +120,13 @@ class PaymentStatusChecker:
         transaction = await self.transaction_dao.get_by_payment_id(payment_id)
         if not transaction or transaction.status != TransactionStatus.PENDING:
             return None
-        if await self.check(transaction) is not None or not transaction.created_at:
+        try:
+            if await self.check(transaction) is not None:
+                return None
+        except Exception as e:
+            # A dropped connection must not end the checks: try again on the next step.
+            logger.warning(f"Failed to check payment '{payment_id}': {e}")
+        if not transaction.created_at:
             return None
         return next_fast_poll_delay((self.now() - transaction.created_at).total_seconds())
 
