@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: bot
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: remnashop
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: remnashop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U remnashop -d remnashop_test"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+      redis:
+        image: valkey/valkey:9-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+
+    # Dummy settings, the same as bot/.env.test. Nothing reaches Telegram or YooKassa.
+    env:
+      APP_DOMAIN: ""
+      APP_CRYPT_KEY: dGVzdC1vbmx5LWtleS10ZXN0LW9ubHkta2V5LTEyMzQ=
+      BOT_TOKEN: "123456:TESTnotarealtokenTESTnotarealtoken"
+      BOT_SECRET_TOKEN: test-secret-token
+      BOT_OWNER_ID: "1"
+      BOT_SUPPORT_USERNAME: support_test
+      REMNAWAVE_TOKEN: unused
+      REMNAWAVE_WEBHOOK_SECRET: unused
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: remnashop_test
+      DATABASE_USER: remnashop
+      DATABASE_PASSWORD: test
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      DOBBY_DB_TESTS: "1"
+      LOG_TO_FILE: "false"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Type check
+        run: uv run mypy src
+
+      - name: Migrate test database
+        run: uv run alembic -c src/infrastructure/database/alembic.ini upgrade head
+
+      - name: Tests
+        run: uv run pytest -q tests

@@ -1,0 +1,44 @@
+# Tests and one-off commands, isolated from the running bot: own Postgres and Redis, dummy
+# settings from .env.test, never the real .env. Nothing here contacts Telegram or YooKassa.
+#
+#   docker compose -f docker-compose.test.yml -p starterkit-test run --rm tests
+#   docker compose -f docker-compose.test.yml -p starterkit-test down -v
+
+services:
+  test-db:
+    image: postgres:17
+    environment:
+      - POSTGRES_USER=remnashop
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_DB=remnashop_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U remnashop -d remnashop_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  test-redis:
+    image: valkey/valkey:9-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep PONG"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    env_file: .env.test
+    volumes:
+      - ./src:/opt/remnashop/src
+      - ./tests:/opt/remnashop/tests
+      - ./assets:/opt/remnashop/assets
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+    command: sh -c "alembic -c src/infrastructure/database/alembic.ini upgrade head && pytest -q -p no:warnings tests"
