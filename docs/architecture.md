@@ -72,6 +72,24 @@ paid") reuses the user's unpaid payment for the same plan, duration and amount: 
 YooKassa for that payment's page instead of creating a new payment. A payment that can no
 longer be paid is not reused.
 
+## Renewal reminders
+
+The Remnawave panel used to trigger them by webhooks. `RenewalReminders` (`reminders.py`) runs
+every minute over `subscriptions.expire_at` and publishes remnashop's own events, so its texts,
+the renew/buy button and the per-type switches in the admin notification settings apply:
+
+| Stage | When |
+|---|---|
+| Expires in 3 / 2 / 1 days | 72–48 h, 48–24 h, under 24 h before expiry |
+| Expired | From the expiry until 24 h after: the same cut-off (`is_expired`) and the same minute cadence as the export, so the message arrives when the user drops out of the file |
+| Expired a day ago | 24–48 h after expiry |
+
+Only current, active subscriptions of users who are not blocked (by an admin or by blocking the
+bot) get reminders; trials get them with the trial wording, as in remnashop. Each stage is sent
+once per subscription period: what was sent is kept in Redis (persistent) under the
+subscription id, its expiry and the stage, so a restart does not repeat it and a renewal, which
+moves the expiry, starts the reminders over. After downtime only the latest due stage is sent.
+
 ## What is stored where
 
 | Data | Where |
@@ -165,6 +183,4 @@ servers and connections. The code stays in place to keep the diff from upstream 
 - Whether links can be rotated. With one login for life, "reissue link" needs a separate
   token in the link; it is a no-op for now.
 - Whose config-delivery service other StarterKit owners use.
-- Renewal reminders (72/48/24 hours, expired) came from panel webhooks. They need a scheduled
-  task over `subscriptions.expire_at` in the bot.
 - Whether to remove the panel-only screens and the `remnapy` dependency, or keep the diff small.

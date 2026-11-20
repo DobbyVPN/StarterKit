@@ -204,3 +204,54 @@ async def test_subscription_lifecycle_reaches_the_file(container: AsyncContainer
             async with uow:
                 await user_dao.delete(user.id)
                 await uow.commit()
+
+
+async def test_reminders_skip_blocked_and_deleted(container: AsyncContainer) -> None:
+    from src.application.common import EventPublisher
+    from src.application.common.dao import UserDao
+    from src.application.common.uow import UnitOfWork
+    from src.application.dto import UserDto
+    from src.application.use_cases.subscription.commands.management import DeleteSubscription
+    from src.infrastructure.dobby.reminders import RenewalReminders
+
+    telegram_id = random.randint(10**12, 10**13)
+    async with container(scope=Scope.REQUEST) as request:
+        uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
+        async with uow:
+            user = await user_dao.create(
+                UserDto(telegram_id=telegram_id, name="Remind", referral_code=f"m{telegram_id}")
+            )
+            await uow.commit()
+
+    async def run_reminders() -> int:
+        async with container(scope=Scope.REQUEST) as request:
+            return await (await request.get(RenewalReminders)).run()
+
+    async def toggle_block() -> None:
+        async with container(scope=Scope.REQUEST) as request:
+            uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
+            async with uow:
+                await user_dao.toggle_blocked_status(user.id)
+                await uow.commit()
+
+    try:
+        await take_trial(container, user.id)  # 3 days: inside the 72 h window
+
+        await toggle_block()
+        assert await run_reminders() == 0  # blocked: nothing
+        await toggle_block()
+
+        assert await run_reminders() == 1  # the 3-day reminder
+        assert await run_reminders() == 0  # not twice
+        publisher = await container.get(EventPublisher)
+        assert type(publisher.events[-1]).__name__ == "SubscriptionExpiresEvent"  # type: ignore[attr-defined]
+
+        async with container(scope=Scope.REQUEST) as request:
+            await (await request.get(DeleteSubscription)).system(user.id)
+        assert await run_reminders() == 0  # deleted: nothing
+    finally:
+        async with container(scope=Scope.REQUEST) as request:
+            uow, user_dao = await request.get(UnitOfWork), await request.get(UserDao)
+            async with uow:
+                await user_dao.delete(user.id)
+                await uow.commit()

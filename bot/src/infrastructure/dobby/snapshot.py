@@ -13,6 +13,11 @@ from src.infrastructure.database.models.user import User
 from .exporter import ExportedUser
 
 
+def is_expired(expire_at: datetime, now: datetime) -> bool:
+    """The single cut-off: an expired user leaves the export and gets the "expired" reminder."""
+    return expire_at <= now
+
+
 class SubscriptionRow(NamedTuple):
     subscription_id: UUID
     status: SubscriptionStatus
@@ -33,7 +38,7 @@ def build_snapshot(rows: Iterable[SubscriptionRow], now: datetime) -> list[Expor
         for row in rows
         if row.status == SubscriptionStatus.ACTIVE
         and not row.user_is_blocked
-        and row.expire_at > now
+        and not is_expired(row.expire_at, now)
     }
     return sorted(users)
 

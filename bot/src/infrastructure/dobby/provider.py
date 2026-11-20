@@ -5,7 +5,7 @@ from dishka import Provider, Scope, provide
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.common import Remnawave
+from src.application.common import EventPublisher, Remnawave
 from src.application.common.dao import SubscriptionDao, TransactionDao, UserDao
 from src.application.common.payment_watcher import PaymentWatcher
 from src.application.use_cases.gateways.commands.payment import ProcessPayment
@@ -17,6 +17,7 @@ from .export_job import RedisExportState, UserExportJob
 from .exporter import FileUserExporter, UserExporter
 from .links import SubscriptionLinkProvider, TemplateLinkProvider
 from .payment_check import FAST_POLL_SCHEDULE, CheckThrottle, PaymentStatusChecker
+from .reminders import RedisReminderLog, RenewalReminders, load_reminder_rows
 from .snapshot import load_snapshot
 
 
@@ -100,6 +101,21 @@ class DobbyProvider(Provider):
         export_trigger: ExportTrigger,
     ) -> Remnawave:
         return DobbyBackend(user_dao, subscription_dao, links, export_trigger)
+
+    @provide(scope=Scope.REQUEST)
+    def get_renewal_reminders(
+        self,
+        session: AsyncSession,
+        user_dao: UserDao,
+        event_publisher: EventPublisher,
+        redis: Redis,
+    ) -> RenewalReminders:
+        return RenewalReminders(
+            load_rows=lambda now: load_reminder_rows(session, now),
+            user_dao=user_dao,
+            event_publisher=event_publisher,
+            log=RedisReminderLog(redis),
+        )
 
     @provide(scope=Scope.REQUEST)
     def get_export_job(
