@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from decimal import Decimal
-from typing import Any, Final, Union
+from typing import Any, Final, Optional, Union
 from uuid import UUID
 
 import orjson
@@ -16,7 +16,7 @@ from src.application.dto import (
 )
 from src.application.dto.payment_gateway import YooKassaGatewaySettingsDto
 from src.core.config import AppConfig
-from src.core.enums import TransactionStatus
+from src.core.enums import Deeplink, TransactionStatus
 
 from .base import BasePaymentGateway
 
@@ -104,6 +104,10 @@ class YookassaGateway(BasePaymentGateway):
         )
         raise last_connect_error  # type: ignore[misc]
 
+    # Payments are confirmed by asking the API (return to the bot, "I paid" button, background
+    # check), so the shop works without a public address. Notifications are optional.
+    supports_status_check = True
+
     async def handle_webhook(self, request: Request) -> Union[tuple[UUID, TransactionStatus], None]:
         logger.debug("Received YooKassa webhook request")
 
@@ -118,20 +122,10 @@ class YookassaGateway(BasePaymentGateway):
             raise ValueError("Required field 'id' is missing")
 
         payment_id = UUID(payment_id_str)
-        status = await self._fetch_payment_status(payment_id)
+        status = await self.fetch_transaction_status(payment_id)
+        return (payment_id, status) if status else None
 
-        match status:
-            case "succeeded":
-                transaction_status = TransactionStatus.COMPLETED
-            case "canceled":
-                transaction_status = TransactionStatus.CANCELED
-            case _:
-                logger.info(f"YooKassa payment '{payment_id}' is '{status}', nothing to do yet")
-                return None
-
-        return payment_id, transaction_status
-
-    async def _fetch_payment_status(self, payment_id: UUID) -> str:
+    async def fetch_transaction_status(self, payment_id: UUID) -> Optional[TransactionStatus]:
         response = await self._client.get(f"v3/payments/{payment_id}")
         if response.status_code == 404:
             raise PermissionError(f"Payment '{payment_id}' not found in this shop")
@@ -141,12 +135,24 @@ class YookassaGateway(BasePaymentGateway):
         if data.get("id") != str(payment_id):
             raise PermissionError(f"YooKassa returned a different payment for '{payment_id}'")
 
-        return str(data.get("status"))
+        match data.get("status"):
+            case "succeeded":
+                return TransactionStatus.COMPLETED
+            case "canceled":
+                return TransactionStatus.CANCELED
+            case status:
+                logger.debug(f"YooKassa payment '{payment_id}' is '{status}'")
+                return None
 
     async def _create_payment_payload(self, amount: str, details: str) -> dict[str, Any]:
+        return_url = f"{await self._get_bot_redirect_url()}?start={Deeplink.PAYMENT_RETURN}"
         return {
             "amount": {"value": amount, "currency": self.data.currency},
-            "confirmation": {"type": "redirect", "return_url": await self._get_bot_redirect_url()},
+            "confirmation": {
+                "type": "redirect",
+                # Back to the bot, which checks the payment right away.
+                "return_url": return_url,
+            },
             "capture": True,
             "description": details,
             "receipt": {

@@ -46,6 +46,14 @@ class BasePaymentGateway(ABC):
         request: Request,
     ) -> Union[tuple[UUID, TransactionStatus], None]: ...
 
+    # Gateways that can report a payment's status on request set this and implement
+    # fetch_transaction_status. Payments are then confirmed without inbound notifications.
+    supports_status_check: bool = False
+
+    async def fetch_transaction_status(self, payment_id: UUID) -> Optional[TransactionStatus]:
+        """Final status of the payment, or None while it is still pending."""
+        raise NotImplementedError
+
     async def build_webhook_response(self, request: Request) -> Response:
         return Response(status_code=200)
 

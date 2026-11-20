@@ -563,6 +563,7 @@ btn-subscription =
     .promocode = 🎟 Активировать промокод
     .promocode-confirm = ✅ Подтвердить
     .pay = 💳 Оплатить
+    .paid = ✅ Я оплатил
     .get = 🎁 Получить бесплатно
     .back-plans = ⬅️ Назад к выбору плана
     .back-duration = ⬅️ Изменить длительность

@@ -18,6 +18,7 @@ from src.application.common.dao import (
     TransactionDao,
     UserDao,
 )
+from src.application.common.payment_watcher import PaymentWatcher
 from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import (
@@ -152,12 +153,14 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
         transaction_dao: TransactionDao,
         get_payment_gateway_instance: GetPaymentGatewayInstance,
         translator_hub: TranslatorHub,
+        payment_watcher: PaymentWatcher,
     ) -> None:
         self.uow = uow
         self.payment_gateway_dao = payment_gateway_dao
         self.transaction_dao = transaction_dao
         self.get_payment_gateway_instance = get_payment_gateway_instance
         self.translator_hub = translator_hub
+        self.payment_watcher = payment_watcher
 
     async def _execute(self, actor: UserDto, data: CreatePaymentDto) -> PaymentResultDto:
         gateway_instance = await self.get_payment_gateway_instance.system(data.gateway_type)
@@ -231,6 +234,8 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
             await self.uow.commit()
 
         logger.info(f"Created transaction '{payment.id}' for user {actor.log}")
+        if gateway_instance.supports_status_check:
+            await self.payment_watcher.watch(payment.id)
         return payment
 
 
@@ -365,7 +370,13 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
                 updated = await self.transaction_dao.transition_status(
                     payment_id,
                     TransactionStatus.COMPLETED,
-                    (TransactionStatus.PENDING, TransactionStatus.FAILED),
+                    # CANCELED too: a payment we gave up on can still be paid late. The status
+                    # comes from the gateway, so the money was taken and must be honoured.
+                    (
+                        TransactionStatus.PENDING,
+                        TransactionStatus.FAILED,
+                        TransactionStatus.CANCELED,
+                    ),
                 )
                 if not updated:
                     logger.warning(

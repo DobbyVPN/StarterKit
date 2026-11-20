@@ -1,15 +1,21 @@
+from uuid import UUID
+
 from dishka import Provider, Scope, provide
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.common import Remnawave
-from src.application.common.dao import SubscriptionDao, UserDao
+from src.application.common.dao import SubscriptionDao, TransactionDao, UserDao
+from src.application.common.payment_watcher import PaymentWatcher
+from src.application.use_cases.gateways.commands.payment import ProcessPayment
+from src.application.use_cases.gateways.queries.providers import GetPaymentGatewayInstance
 
 from .backend import DobbyBackend, ExportTrigger
 from .config import DobbyConfig
 from .export_job import RedisExportState, UserExportJob
 from .exporter import FileUserExporter, UserExporter
 from .links import SubscriptionLinkProvider, TemplateLinkProvider
+from .payment_check import FAST_POLL_SCHEDULE, PaymentStatusChecker
 from .snapshot import load_snapshot
 
 
@@ -21,6 +27,16 @@ class TaskiqExportTrigger(ExportTrigger):
         )
 
         await export_users_after_change_task.kiq()  # type: ignore[call-overload]
+
+
+class TaskiqPaymentWatcher(PaymentWatcher):
+    async def watch(self, payment_id: UUID) -> None:
+        from src.infrastructure.taskiq.tasks.dobby_payments import (  # noqa: PLC0415
+            watch_payment_task,
+        )
+
+        first_delay = FAST_POLL_SCHEDULE[0][1]
+        await watch_payment_task.kiq(payment_id, first_delay)  # type: ignore[call-overload]
 
 
 class DobbyProvider(Provider):
@@ -42,6 +58,19 @@ class DobbyProvider(Provider):
     @provide
     def get_export_trigger(self) -> ExportTrigger:
         return TaskiqExportTrigger()
+
+    @provide
+    def get_payment_watcher(self) -> PaymentWatcher:
+        return TaskiqPaymentWatcher()
+
+    @provide(scope=Scope.REQUEST)
+    def get_payment_checker(
+        self,
+        transaction_dao: TransactionDao,
+        get_payment_gateway_instance: GetPaymentGatewayInstance,
+        process_payment: ProcessPayment,
+    ) -> PaymentStatusChecker:
+        return PaymentStatusChecker(transaction_dao, get_payment_gateway_instance, process_payment)
 
     @provide(scope=Scope.REQUEST)
     def get_backend(

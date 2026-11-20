@@ -12,6 +12,7 @@ def setup_routers(router: Router) -> None:
         extra.commands.router,
         extra.member.router,
         extra.channel_member.router,
+        extra.payment_check.router,
         extra.goto.router,
         extra.inline.router,
         #

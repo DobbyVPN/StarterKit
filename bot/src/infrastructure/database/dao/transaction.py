@@ -162,13 +162,16 @@ class TransactionDaoImpl(TransactionDao):
         logger.debug(f"Transaction '{payment_id}' existence status is '{is_exists}'")
         return is_exists
 
-    async def cancel_old(self, minutes: int = 30) -> int:
+    async def cancel_old(
+        self, minutes: int = 30, skip_gateways: Iterable[PaymentGatewayType] = ()
+    ) -> int:
         threshold = datetime_now() - timedelta(minutes=minutes)
 
         stmt = (
             update(Transaction)
             .where(Transaction.status == TransactionStatus.PENDING)
             .where(Transaction.created_at < threshold)
+            .where(Transaction.gateway_type.notin_(tuple(skip_gateways)))
             .values(status=TransactionStatus.CANCELED)
         )
         result = await self.session.execute(stmt)

@@ -4,6 +4,7 @@ from src.application.common import Interactor
 from src.application.common.dao import BroadcastDao, TransactionDao
 from src.application.common.uow import UnitOfWork
 from src.application.dto import UserDto
+from src.core.enums import PaymentGatewayType
 
 
 class CancelOldTransactions(Interactor[None, None]):
@@ -15,7 +16,9 @@ class CancelOldTransactions(Interactor[None, None]):
 
     async def _execute(self, actor: UserDto, data: None) -> None:
         async with self.uow:
-            await self.transaction_dao.cancel_old()
+            # Payments the bot can check with the gateway are settled by asking it
+            # (src/infrastructure/dobby/payment_check.py), not cancelled blindly.
+            await self.transaction_dao.cancel_old(skip_gateways=(PaymentGatewayType.YOOKASSA,))
             await self.uow.commit()
 
         logger.info("Canceled old transactions from database")

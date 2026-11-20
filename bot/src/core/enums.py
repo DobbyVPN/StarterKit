@@ -18,6 +18,7 @@ class Deeplink(StrEnum):
     INVITE = "invite"
     ADVERTISING = "ad"
     PROMOCODE = "promo"
+    PAYMENT_RETURN = "pay"  # back from the payment page: check pending payments
 
     def build_url(self, base_url: str, data: Optional[str]) -> str:
         if not data:

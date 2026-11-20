@@ -8,6 +8,7 @@ from magic_filter import F
 from src.core.constants import PAYMENT_PREFIX
 from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
 from src.telegram.keyboards import back_main_menu_button, connect_buttons
+from src.telegram.routers.extra.payment_check import on_paid_button
 from src.telegram.states import Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 from src.telegram.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
@@ -207,6 +208,14 @@ confirm = Window(
             on_click=on_get_subscription,
             when=~F["url"],
             style=Style(ButtonStyle.SUCCESS),
+        ),
+    ),
+    Row(
+        Button(
+            text=I18nFormat("btn-subscription.paid"),
+            id=f"{PAYMENT_PREFIX}paid",
+            on_click=on_paid_button,
+            when=F["url"],
         ),
     ),
     Row(
