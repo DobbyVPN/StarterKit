@@ -52,7 +52,7 @@ class RequirementSettingsDto(TrackableMixin):
 
     rules_link: SecretStr = SecretStr("https://telegram.org/tos/")
     channel_id: Optional[int] = None
-    channel_link: SecretStr = SecretStr("@remna_shop")
+    channel_link: SecretStr = SecretStr("")
 
     @property
     def rules_url(self) -> str:
@@ -147,7 +147,9 @@ class NotificationsSettingsDto(TrackableMixin):
 class ReferralRewardSettingsDto(TrackableMixin):
     type: ReferralRewardType = ReferralRewardType.EXTRA_DAYS
     strategy: ReferralRewardStrategy = ReferralRewardStrategy.AMOUNT
-    config: dict[ReferralLevel, int] = field(default_factory=lambda: {ReferralLevel.FIRST: 5})
+    # +30 days (one month) to the inviter; the invited friend gets the same, see
+    # DOBBY_REFERRAL_FRIEND_BONUS_DAYS.
+    config: dict[ReferralLevel, int] = field(default_factory=lambda: {ReferralLevel.FIRST: 30})
 
     @property
     def is_identical(self) -> bool:
@@ -215,7 +217,9 @@ class BlacklistSettingsDto(TrackableMixin):
 
 @dataclass(kw_only=True)
 class ResetFeatureSettingsDto(TrackableMixin):
-    enabled: bool = True
+    # Off by default: devices and link resets do nothing without a panel, and a reset
+    # referral link breaks links already shared.
+    enabled: bool = False
     cooldown_hours: int = 0
 
 

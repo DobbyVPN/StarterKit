@@ -87,26 +87,16 @@ custom_buttons = (
 )
 
 
+# Opens the "Connect DobbyVPN" screen (download the app, copy the key).
 connect_buttons = (
-    WebApp(
-        text=I18nFormat("btn-menu.connect"),
-        url=Format("{connection_url}"),
-        id="connect_miniapp",
-        when=F["is_mini_app"] & F["connectable"],
-        style=Style(ButtonStyle.PRIMARY),
-    ),
-    Url(
-        text=I18nFormat("btn-menu.connect-reserve"),
-        url=Format("{subscription_url}"),
-        id="connect_reserve",
-        when=F["is_mini_app_reserve"] & F["connectable"],
-    ),
-    Url(
-        text=I18nFormat("btn-menu.connect"),
-        url=Format("{connection_url}"),
-        id="connect_sub_page",
-        when=~F["is_mini_app"] & F["connectable"],
-        style=Style(ButtonStyle.PRIMARY),
+    Row(
+        Start(
+            text=I18nFormat("btn-menu.connect"),
+            id="connect_dobby",
+            state=MainMenu.CONNECT,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.SUCCESS),
+        ),
     ),
 )
 

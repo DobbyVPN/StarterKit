@@ -24,3 +24,13 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     telegram_mode: Literal["polling", "webhook"] = "polling"
 
     reminder_hours_before: list[int] = list(DEFAULT_REMINDER_HOURS_BEFORE)
+
+    # "Connect DobbyVPN" screen: where to download the app.
+    download_url_ios: str = "https://apps.apple.com/us/app/dobbyvpn-do-better-by-vpn/id6741442515"
+    download_url_android: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
+    download_url_windows: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
+    download_url_macos: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
+
+    # Referral bonus for the invited friend on their first payment, in days (0 = none).
+    # The inviter's reward is set in the admin menu (referral system).
+    referral_friend_bonus_days: int = 30

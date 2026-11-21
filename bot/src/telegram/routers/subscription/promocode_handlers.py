@@ -10,7 +10,7 @@ from loguru import logger
 
 from src.application.common import EventPublisher, Notifier
 from src.application.common.dao import SubscriptionDao
-from src.application.dto import TelegramUserDto
+from src.application.dto import PlanDto, TelegramUserDto
 from src.application.events import ErrorEvent
 from src.application.use_cases.promocode.commands.activate import (
     ActivatePromocode,
@@ -152,6 +152,8 @@ async def getter_promocode(dialog_manager: DialogManager, **kwargs: Any) -> dict
     )
     reward_type = promo_data.get("reward_type", "")
     return {
+        # Opened from choosing a term: "Back" returns there, otherwise to the main screen.
+        "from_purchase": PlanDto.__name__ in dialog_manager.dialog_data,
         "has_promo": bool(promo_data),
         "promo_code": promo_data.get("code", dialog_manager.dialog_data.get(PENDING_PROMO_KEY, "")),
         "promo_reward_type": reward_type,

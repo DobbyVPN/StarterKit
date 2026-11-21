@@ -343,6 +343,7 @@ async def success_payment_getter(
         "device_limit": i18n_format_device_limit(subscription.device_limit),
         "expire_time": i18n_format_expire_time(subscription.expire_at),
         "added_duration": i18n_format_days(subscription.plan_snapshot.duration),
+        "expire_date": subscription.expire_at.strftime("%d.%m.%Y"),
         "is_mini_app": config.bot.is_mini_app,
         "is_mini_app_reserve": config.bot.is_mini_app and settings.extra.mini_app_reserve,
         "connection_url": config.bot.mini_app_url or subscription.url,

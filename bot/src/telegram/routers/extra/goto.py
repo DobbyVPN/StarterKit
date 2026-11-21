@@ -15,13 +15,14 @@ from src.application.use_cases.promocode.queries.validate import (
 )
 from src.application.use_cases.user.queries.plans import GetAvailablePlanByCode
 from src.core.constants import GOTO_PREFIX, PAYMENT_PREFIX, TARGET_USER_ID
-from src.core.enums import Deeplink, PromocodeRewardType
+from src.core.enums import Deeplink, PromocodeRewardType, PurchaseType
 from src.core.exceptions import (
     PromocodeAlreadyActivatedError,
     PromocodeExpiredError,
     PromocodeNotAvailableError,
     PromocodeNotFoundError,
 )
+from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import DashboardUser, MainMenu, Subscription, state_from_string
 
 router = Router(name=__name__)
@@ -35,13 +36,17 @@ async def on_goto(
     data = callback.data.removeprefix(GOTO_PREFIX)  # type: ignore[union-attr]
 
     if data.startswith(PAYMENT_PREFIX):
-        # TODO: Implement a transition to a specific type of payment
-        # There shit with data...
+        # Renewal reminders and "Buy" buttons in notifications: straight to choosing a term.
+        try:
+            purchase_type = PurchaseType(data.removeprefix(PAYMENT_PREFIX))
+        except ValueError:
+            purchase_type = PurchaseType.NEW
         await dialog_manager.bg(
             user_id=user.telegram_id,
             chat_id=user.telegram_id,
         ).start(
             state=Subscription.MAIN,
+            data={PURCHASE_TYPE_KEY: purchase_type},
             mode=StartMode.RESET_STACK,
             show_mode=ShowMode.DELETE_AND_SEND,
         )
