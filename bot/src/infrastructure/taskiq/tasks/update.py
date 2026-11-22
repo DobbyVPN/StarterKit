@@ -13,10 +13,13 @@ from src.core.config import AppConfig
 from src.infrastructure.redis.keys import LatestNotifiedVersionKey
 from src.infrastructure.taskiq.broker import broker
 
-GITHUB_RELEASE_URL: Final[str] = "https://api.github.com/repos/snoups/remnashop/releases/latest"
+GITHUB_RELEASE_URL: Final[str] = "https://api.github.com/repos/DobbyVPN/StarterKit/releases/latest"
 
 
-@broker.task(schedule=[{"cron": "0 * * * *"}], retry_on_error=False)
+# Not scheduled: StarterKit does not publish versioned releases yet, and the upstream check
+# would tell owners to update to remnashop. Add schedule=[{"cron": "0 * * * *"}] back once
+# StarterKit releases follow __version__.
+@broker.task(retry_on_error=False)
 @inject(patch_module=True)
 async def check_bot_update(
     config: FromDishka[AppConfig],
