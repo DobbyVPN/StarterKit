@@ -20,9 +20,7 @@ from src.application.events import (
     RemnawaveVersionWarningEvent,
     WebhookErrorEvent,
 )
-from src.application.events.system import RemnashopWelcomeEvent
-from src.application.use_cases.gateways.commands.payment import CreateDefaultPaymentGateway
-from src.application.use_cases.settings.commands.defaults import CreateDefaultSettings
+from src.application.events.system import StarterKitWelcomeEvent
 from src.core.config import AppConfig
 from src.core.constants import REMNAWAVE_MAX_VERSION
 from src.core.utils.i18n_helpers import i18n_format_seconds
@@ -36,6 +34,7 @@ from src.infrastructure.services import (
     NotificationWorker,
     WebhookService,
 )
+from src.infrastructure.startup import ensure_defaults
 from src.web.endpoints import TelegramWebhookEndpoint
 
 
@@ -52,6 +51,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     notification_worker = await container.get(NotificationWorker)
     notification_worker.set_container_factory(lambda: container)
 
+    # Before anything publishes an event: notification handlers need the settings row.
+    await ensure_defaults(container)
+
     async with container(scope=Scope.REQUEST) as startup_container:
         config = await startup_container.get(AppConfig)
         bot_service = await startup_container.get(BotService)
@@ -59,8 +61,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         webhook_service = await startup_container.get(WebhookService)
         command_service = await startup_container.get(CommandService)
         remnawave_service = await startup_container.get(Remnawave)
-        create_default_payment_gateway = await startup_container.get(CreateDefaultPaymentGateway)
-        create_default_settings = await startup_container.get(CreateDefaultSettings)
         redis = await startup_container.get(Redis)
         retort = await startup_container.get(Retort)
 
@@ -72,11 +72,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await event_bus.publish(BotInlineModeDisabledEvent())
 
         states = await bot_service.get_bot_states()
-        await create_default_payment_gateway.system()
-        # Seed the default settings row (committed, cache-invalidating) before any
-        # request can read it, so `get()` never has to lazily create — and cache —
-        # an uncommitted row whose id would later fail to match on update().
-        await create_default_settings.system()
         settings = await settings_dao.get()
         allowed_updates = dispatcher.resolve_used_update_types()
         use_polling = DobbyConfig().telegram_mode == "polling"
@@ -139,7 +134,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     if last_welcomed != current_version:
         await redis.set(welcomed_key, current_version)
-        await event_bus.publish(RemnashopWelcomeEvent())
+        await event_bus.publish(StarterKitWelcomeEvent())
 
     bot_startup_event = BotStartupEvent(
         **config.build.data,
