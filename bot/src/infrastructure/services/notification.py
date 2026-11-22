@@ -42,7 +42,7 @@ from src.application.events.system import (
     BlacklistRegistrationAttemptEvent,
     BotUpdateEvent,
     PromocodeActivatedEvent,
-    RemnashopWelcomeEvent,
+    StarterKitWelcomeEvent,
     SubscriptionRevokedEvent,
     TorrentBlockerReportEvent,
     TrialActivatedEvent,
@@ -68,9 +68,9 @@ from src.telegram.keyboards import (
     get_buy_keyboard,
     get_close_notification_button,
     get_contact_support_keyboard,
-    get_remnashop_keyboard,
     get_remnashop_update_keyboard,
     get_renew_keyboard,
+    get_starterkit_welcome_keyboard,
     get_user_keyboard,
 )
 from src.telegram.widgets import extract_tg_emoji
@@ -135,8 +135,8 @@ class NotificationService(Notifier):
             return get_contact_support_keyboard(event.support_url)
         if isinstance(event, TorrentBlockerReportEvent):
             return get_user_keyboard(event.user_id)
-        if isinstance(event, RemnashopWelcomeEvent):
-            return get_remnashop_keyboard()
+        if isinstance(event, StarterKitWelcomeEvent):
+            return get_starterkit_welcome_keyboard()
         if isinstance(event, BotUpdateEvent):
             return get_remnashop_update_keyboard()
         if isinstance(event, UserRegisteredEvent):
@@ -157,8 +157,8 @@ class NotificationService(Notifier):
             return get_user_keyboard(event.user_id)
         return None
 
-    @on_event(RemnashopWelcomeEvent)
-    async def on_remnashop_welcome_event(self, event: RemnashopWelcomeEvent) -> None:
+    @on_event(StarterKitWelcomeEvent)
+    async def on_starterkit_welcome_event(self, event: StarterKitWelcomeEvent) -> None:
         logger.info(f"Received '{event.event_type}' event")
         payload = event.as_payload()
         payload.reply_markup = self._resolve_keyboard(event)
@@ -470,15 +470,17 @@ class NotificationService(Notifier):
                 return self._translate_keyboard_text(close_keyboard, locale)
             return None
 
-        translated_markup = self._translate_keyboard_text(reply_markup, locale)
-
         if disable_default_markup or delete_after is not None:
-            return translated_markup
+            return self._translate_keyboard_text(reply_markup, locale)
 
-        if isinstance(translated_markup, InlineKeyboardMarkup):
-            builder = InlineKeyboardBuilder.from_markup(translated_markup)
+        if isinstance(reply_markup, InlineKeyboardMarkup):
+            # Add the close button first and translate once: translating an already translated
+            # keyboard looks the button texts up as keys ("Translation key ... not found").
+            builder = InlineKeyboardBuilder.from_markup(reply_markup)
             builder.row(get_close_notification_button())
             return self._translate_keyboard_text(builder.as_markup(), locale)
+
+        translated_markup = self._translate_keyboard_text(reply_markup, locale)
 
         logger.warning(
             f"Unsupported reply_markup type '{type(reply_markup).__name__}' "
