@@ -1426,8 +1426,6 @@ msg-subscription-details =
 msg-subscription-duration =
     <b>⏳ Выберите срок</b>
 
-    { msg-subscription-details }
-
 msg-subscription-payment-method =
     <b>💳 Выберите способ оплаты</b>
 

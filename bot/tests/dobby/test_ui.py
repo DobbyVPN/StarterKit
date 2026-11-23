@@ -246,3 +246,18 @@ async def test_success_screen_after_payment_does_not_restart_the_purchase(
 
 def test_defaults_sell_in_roubles() -> None:
     assert SettingsDto().default_currency == Currency.RUB
+
+
+def test_expiry_notices_say_why_the_vpn_stopped(i18n: Any) -> None:
+    expired = str(i18n.get("event-subscription.expired", is_trial=0))
+    assert expired.startswith("<b>⏳ Подписка закончилась")
+    assert "ключ останется тем же" in expired
+    trial = str(i18n.get("event-subscription.expired", is_trial=1))
+    assert "Пробный период закончился" in trial
+    expiring = str(i18n.get("event-subscription.expiring", is_trial=0, value=3))
+    assert "закончится через" in expiring
+
+
+def test_choosing_a_term_does_not_repeat_the_buttons(i18n: Any) -> None:
+    text = str(i18n.get("msg-subscription-duration", plan="1 месяц", description=0))
+    assert "1 месяц" not in text
