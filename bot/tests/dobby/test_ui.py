@@ -10,12 +10,22 @@ from src.application.dto import PlanSnapshotDto, SubscriptionDto
 from src.application.dto.settings import SettingsDto
 from src.core.config import AppConfig
 from src.core.constants import GOTO_PREFIX, PAYMENT_PREFIX
-from src.core.enums import Currency, Locale, PurchaseType, SubscriptionStatus
+from src.core.enums import (
+    Currency,
+    Locale,
+    PurchaseType,
+    ReferralRewardStrategy,
+    SubscriptionStatus,
+)
 from src.core.utils.time import datetime_now
 from src.infrastructure.di.providers.i18n import I18nProvider
 from src.infrastructure.dobby.links import is_key_issued
 from src.telegram.routers.extra.goto import on_goto
-from src.telegram.routers.menu.getters import SubState, subscription_screen_data
+from src.telegram.routers.menu.getters import (
+    SubState,
+    referral_reward_days,
+    subscription_screen_data,
+)
 from src.telegram.routers.subscription import handlers
 from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import Subscription
@@ -261,3 +271,33 @@ def test_expiry_notices_say_why_the_vpn_stopped(i18n: Any) -> None:
 def test_choosing_a_term_does_not_repeat_the_buttons(i18n: Any) -> None:
     text = str(i18n.get("msg-subscription-duration", plan="1 месяц", description=0))
     assert "1 месяц" not in text
+
+
+def invite(i18n: Any, **kwargs: Any) -> str:
+    base = {"reward_type": "EXTRA_DAYS", "reward_days": 30, "friend_days": 30}
+    base |= {"referrals": 2, "payments": 1, "points": 0}
+    return str(i18n.get("msg-menu-invite", **{**base, **kwargs}))
+
+
+def test_invite_names_the_days_for_both(i18n: Any) -> None:
+    text = invite(i18n)
+    assert "вы получите <b>+30 дней</b>" in text
+    assert "а он — <b>+30 дней</b>" in text
+
+
+def test_invite_without_friend_bonus(i18n: Any) -> None:
+    text = invite(i18n, reward_days=1, friend_days=0)
+    assert "<b>+1 день</b>" in text
+    assert ", а он —" not in text
+
+
+def test_invite_when_reward_is_not_fixed_days(i18n: Any) -> None:
+    assert "бесплатные дни" in invite(i18n, reward_days=0)
+    assert "баллы" in invite(i18n, reward_days=0, reward_type="POINTS")
+
+
+def test_reward_days_only_for_fixed_extra_days() -> None:
+    referral = SettingsDto().referral
+    assert referral_reward_days(referral) == 30
+    referral.reward.strategy = ReferralRewardStrategy.PERCENT
+    assert referral_reward_days(referral) == 0

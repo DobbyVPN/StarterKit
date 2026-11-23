@@ -10,9 +10,16 @@ from loguru import logger
 from src.application.common import BotService, Remnawave, TranslatorRunner
 from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao
 from src.application.dto import SubscriptionDto, TelegramUserDto
+from src.application.dto.settings import ReferralSettingsDto
 from src.application.use_cases.misc.queries.menu import GetMenuData
 from src.core.config import AppConfig
-from src.core.enums import PurchaseType, SubscriptionStatus
+from src.core.enums import (
+    PurchaseType,
+    ReferralLevel,
+    ReferralRewardStrategy,
+    ReferralRewardType,
+    SubscriptionStatus,
+)
 from src.core.exceptions import MenuRenderError
 from src.core.utils.time import datetime_now
 from src.infrastructure.dobby.config import DobbyConfig
@@ -106,6 +113,17 @@ async def menu_getter(
 
     except Exception as e:
         raise MenuRenderError(str(e)) from e
+
+
+def referral_reward_days(referral: ReferralSettingsDto) -> int:
+    """Days the inviter gets per paying friend, if the reward is a fixed number of days."""
+    reward = referral.reward
+    if (
+        reward.type != ReferralRewardType.EXTRA_DAYS
+        or reward.strategy != ReferralRewardStrategy.AMOUNT
+    ):
+        return 0
+    return max(reward.config.get(ReferralLevel.FIRST, 0), 0)
 
 
 class SubState(StrEnum):
@@ -227,6 +245,7 @@ async def invite_getter(
     i18n: FromDishka[TranslatorRunner],
     settings_dao: FromDishka[SettingsDao],
     referral_dao: FromDishka[ReferralDao],
+    dobby_config: FromDishka[DobbyConfig],
     **kwargs: Any,
 ) -> dict[str, Any]:
     settings = await settings_dao.get()
@@ -245,6 +264,9 @@ async def invite_getter(
         "referral_url": referral_url,
         "withdraw": support_url,
         "referral_reset_enabled": int(settings.extra.referral_reset.enabled),
+        # Concrete days for the invite text; 0 when the reward is not a fixed number of days.
+        "reward_days": referral_reward_days(settings.referral),
+        "friend_days": max(dobby_config.referral_friend_bonus_days, 0),
     }
 
 

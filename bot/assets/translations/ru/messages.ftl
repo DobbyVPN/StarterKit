@@ -70,18 +70,31 @@ msg-menu-devices-confirm-delete-all =
 
 msg-menu-invite =
     <b>👥 Пригласить друзей</b>
-    
-    Делитесь вашей уникальной ссылкой и получайте вознаграждение в виде { $reward_type ->
-        [POINTS] <b>баллов, которые можно обменять на подписку или реальные деньги</b>
-        [EXTRA_DAYS] <b>бесплатных дней к вашей подписке</b>
-        *[OTHER] { $reward_type }
-    }!
+
+    { $reward_days ->
+    [0] { $reward_type ->
+        [POINTS] Делитесь своей ссылкой и получайте <b>баллы</b>, которые можно обменять на подписку.
+        *[OTHER] Делитесь своей ссылкой и получайте <b>бесплатные дни</b> к подписке.
+        }
+    *[other] Отправьте другу свою ссылку. Когда он оплатит подписку, вы получите <b>+{ $reward_days } { $reward_days ->
+        [one] день
+        [few] дня
+        *[other] дней
+        }</b>{ $friend_days ->
+        [0] { "" }
+        *[other] , а он — <b>+{ $friend_days } { $friend_days ->
+            [one] день
+            [few] дня
+            *[other] дней
+            }</b> к своей подписке
+        }.
+    }
 
     <b>📊 Статистика</b>:
     <blockquote>
     👥 Всего приглашенных: { $referrals }
-    💳 Платежей по вашей ссылке: { $payments }
-    { $reward_type -> 
+    💳 Оплатили подписку: { $payments }
+    { $reward_type ->
     [POINTS] 💎 Ваши баллы: { $points }
     *[EXTRA_DAYS] { empty }
     }
