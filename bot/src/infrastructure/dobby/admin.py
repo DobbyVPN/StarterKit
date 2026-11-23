@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Iterable, NamedTuple, Optional, Protocol
 from zoneinfo import ZoneInfo
@@ -12,8 +12,6 @@ from src.core.enums import Currency, PaymentGatewayType, SubscriptionStatus, Tra
 from src.infrastructure.database.models.subscription import Subscription
 from src.infrastructure.database.models.transaction import Transaction
 from src.infrastructure.database.models.user import User
-
-EXPIRING_WINDOW = timedelta(days=3)
 
 
 class SubscriptionPoint(NamedTuple):
@@ -32,7 +30,6 @@ class Payment(NamedTuple):
 @dataclass
 class AdminSummary:
     active: int = 0
-    expiring_soon: int = 0
     revenue_today: dict[Currency, Decimal] = field(default_factory=dict)
     revenue_month: dict[Currency, Decimal] = field(default_factory=dict)
 
@@ -43,7 +40,7 @@ def build_summary(
     now: datetime,
     timezone: str,
 ) -> AdminSummary:
-    """Active subscriptions, those ending within 3 days, and revenue.
+    """Active subscriptions and revenue.
 
     Revenue counts only completed real payments: no free grants, no test payments, nothing
     refunded or canceled. "Today" and "this month" start at midnight in the owner's time zone.
@@ -53,8 +50,6 @@ def build_summary(
         if sub.status != SubscriptionStatus.ACTIVE or sub.expire_at <= now:
             continue
         summary.active += 1
-        if sub.expire_at <= now + EXPIRING_WINDOW:
-            summary.expiring_soon += 1
 
     local_now = now.astimezone(ZoneInfo(timezone))
     day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)

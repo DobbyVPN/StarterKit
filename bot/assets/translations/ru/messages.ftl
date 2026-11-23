@@ -1803,10 +1803,6 @@ msg-admin-home =
     ✅ Активных подписок: <b>{ $active_subscriptions }</b>
     💰 Выручка сегодня: <b>{ $revenue_today }</b>
     📅 Выручка за месяц: <b>{ $revenue_month }</b>
-    { $expiring_soon ->
-    [0] ⏳ Заканчиваются за 3 дня: 0
-    *[other] ⚠️ <b>Заканчиваются за 3 дня: { $expiring_soon }</b>
-    }
     🖥 Серверы: <i>мониторинг пока не подключён</i>
 
 msg-admin-payments =

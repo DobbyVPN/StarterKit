@@ -45,7 +45,7 @@ def pay(amount: str, when: datetime, **kwargs: Any) -> Payment:
     return Payment(**{**fields, **kwargs})
 
 
-def test_summary_counts_active_and_expiring() -> None:
+def test_summary_counts_active() -> None:
     subs = [
         SubscriptionPoint(SubscriptionStatus.ACTIVE, NOW + 30 * 24 * H),
         SubscriptionPoint(SubscriptionStatus.ACTIVE, NOW + 2 * 24 * H),
@@ -55,7 +55,6 @@ def test_summary_counts_active_and_expiring() -> None:
     ]
     summary = build_summary(subs, [], NOW, TZ)
     assert summary.active == 3
-    assert summary.expiring_soon == 2
 
 
 def test_revenue_only_counts_real_completed_payments() -> None:
@@ -131,7 +130,7 @@ async def test_who_sees_the_summary(role: Role, client_mode: bool, admin_view: b
     data = await admin_screen_data(user(role), Store(client_mode), Summary(), None)  # type: ignore[arg-type]
     assert data["admin_view"] is admin_view
     assert data["client_mode"] is (client_mode and role == Role.OWNER)
-    assert ("active_subscriptions" in data) is admin_view
+    assert (data["revenue_month"] != "") is admin_view
 
 
 @pytest.fixture(scope="module")
@@ -142,11 +141,20 @@ def i18n() -> Any:
 
 def test_summary_text(i18n: Any) -> None:
     args = {"active_subscriptions": 5, "revenue_today": "199 ₽", "revenue_month": "698 ₽"}
-    calm = str(i18n.get("msg-admin-home", expiring_soon=0, **args))
-    alert = str(i18n.get("msg-admin-home", expiring_soon=2, **args))
-    assert "Активных подписок: <b>5</b>" in calm
-    assert "мониторинг пока не подключён" in calm
-    assert "⚠️ <b>Заканчиваются за 3 дня: 2</b>" in alert
+    text = str(i18n.get("msg-admin-home", **args))
+    assert "Активных подписок: <b>5</b>" in text
+    assert "мониторинг пока не подключён" in text
+    assert "Заканчиваются" not in text
+
+
+@pytest.mark.parametrize("role", [Role.OWNER, Role.USER])
+@pytest.mark.parametrize("client_mode", [True, False])
+async def test_every_main_screen_text_can_be_formatted(
+    i18n: Any, role: Role, client_mode: bool
+) -> None:
+    # Hidden texts are formatted too: each one must get all its values in every view.
+    data = await admin_screen_data(user(role), Store(client_mode), Summary(), None)  # type: ignore[arg-type]
+    i18n.get("msg-admin-home", **data)
 
 
 def test_blocked_payment_text(i18n: Any) -> None:

@@ -145,13 +145,16 @@ async def admin_screen_data(
         "is_admin": is_admin,
         "client_mode": client_mode,
         "admin_view": is_admin and not client_mode,
+        # Always present: hidden texts are still formatted, so their values must exist.
+        "active_subscriptions": 0,
+        "revenue_today": "",
+        "revenue_month": "",
     }
     if data["admin_view"]:
         summary = await admin_summary.get(datetime_now())
         data.update(
             {
                 "active_subscriptions": summary.active,
-                "expiring_soon": summary.expiring_soon,
                 "revenue_today": format_amounts(summary.revenue_today),
                 "revenue_month": format_amounts(summary.revenue_month),
             }
