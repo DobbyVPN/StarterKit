@@ -163,6 +163,13 @@ download_links = (
         Url(text=I18nFormat("btn-connect.windows"), id="dl_windows", url=Format("{url_windows}")),
         Url(text=I18nFormat("btn-connect.macos"), id="dl_macos", url=Format("{url_macos}")),
     ),
+    Row(
+        Url(
+            text=I18nFormat("btn-connect.macos-intel"),
+            id="dl_macos_intel",
+            url=Format("{url_macos_intel}"),
+        ),
+    ),
 )
 
 # Download only: works before buying and while the key is on its way.

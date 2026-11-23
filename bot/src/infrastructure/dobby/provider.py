@@ -14,6 +14,7 @@ from src.application.use_cases.gateways.queries.providers import GetPaymentGatew
 
 from .backend import DobbyBackend, ExportTrigger
 from .config import DobbyConfig
+from .downloads import AndroidDownloadLink
 from .export_job import RedisExportState, UserExportJob
 from .exporter import FileUserExporter, UserExporter
 from .links import SubscriptionLinkProvider, TemplateLinkProvider
@@ -73,6 +74,10 @@ class DobbyProvider(Provider):
     @provide
     def get_export_trigger(self) -> ExportTrigger:
         return TaskiqExportTrigger()
+
+    @provide
+    def get_android_download_link(self, config: DobbyConfig) -> AndroidDownloadLink:
+        return AndroidDownloadLink(config.releases_repository, config.download_url_android)
 
     @provide
     def get_referral_friend_bonus(self, config: DobbyConfig) -> ReferralFriendBonus:

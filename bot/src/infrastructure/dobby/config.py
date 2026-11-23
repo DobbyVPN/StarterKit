@@ -26,10 +26,21 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     reminder_hours_before: list[int] = list(DEFAULT_REMINDER_HOURS_BEFORE)
 
     # "Connect DobbyVPN" screen: where to download the app.
+    # Direct file links: release files with a fixed name are taken from the latest release.
     download_url_ios: str = "https://apps.apple.com/us/app/dobbyvpn-do-better-by-vpn/id6741442515"
-    download_url_android: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
-    download_url_windows: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
-    download_url_macos: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
+    download_url_windows: str = (
+        "https://github.com/DobbyVPN/DobbyVPN/releases/latest/download/dobbyVPN-windows-amd64.msi"
+    )
+    download_url_macos: str = (
+        "https://github.com/DobbyVPN/DobbyVPN/releases/latest/download/dobbyVPN-macos-aarch64.pkg"
+    )
+    download_url_macos_intel: str = (
+        "https://github.com/DobbyVPN/DobbyVPN/releases/latest/download/dobbyVPN-macos-amd64.pkg"
+    )
+    # The Android file name carries the version, so by default the bot looks the current
+    # file up in the latest release of this repository. Set a URL to use it instead.
+    download_url_android: str = ""
+    releases_repository: str = "DobbyVPN/DobbyVPN"
 
     # Optional video or page showing how to connect; adds a button to "Connect DobbyVPN".
     connect_guide_url: str = ""

@@ -23,6 +23,7 @@ from src.core.enums import (
 from src.core.exceptions import MenuRenderError
 from src.core.utils.time import datetime_now
 from src.infrastructure.dobby.config import DobbyConfig
+from src.infrastructure.dobby.downloads import AndroidDownloadLink
 from src.infrastructure.dobby.links import is_key_issued
 
 
@@ -309,6 +310,7 @@ async def connect_getter(
     user: TelegramUserDto,
     subscription_dao: FromDishka[SubscriptionDao],
     dobby_config: FromDishka[DobbyConfig],
+    android_link: FromDishka[AndroidDownloadLink],
     **kwargs: Any,
 ) -> dict[str, Any]:
     """ "Connect DobbyVPN": download links and the key, or a note that the key is on its way."""
@@ -318,8 +320,9 @@ async def connect_getter(
         "sub_key": key,
         "key_issued": is_key_issued(key),
         "url_ios": dobby_config.download_url_ios,
-        "url_android": dobby_config.download_url_android,
+        "url_android": await android_link.get(),
         "url_windows": dobby_config.download_url_windows,
         "url_macos": dobby_config.download_url_macos,
+        "url_macos_intel": dobby_config.download_url_macos_intel,
         "guide_url": dobby_config.connect_guide_url,
     }

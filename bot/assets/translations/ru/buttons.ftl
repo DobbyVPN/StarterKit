@@ -606,6 +606,7 @@ btn-ad-links =
     }
 
 btn-connect =
+    .macos-intel = 💻 macOS (Intel)
     .guide = 🎬 Видео-инструкция
     .ios = 🍏 iPhone
     .android = 🤖 Android
