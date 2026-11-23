@@ -31,6 +31,9 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     download_url_windows: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
     download_url_macos: str = "https://github.com/DobbyVPN/DobbyVPN/releases/latest"
 
+    # Optional video or page showing how to connect; adds a button to "Connect DobbyVPN".
+    connect_guide_url: str = ""
+
     # Referral bonus for the invited friend on their first payment, in days (0 = none).
     # The inviter's reward is set in the admin menu (referral system).
     referral_friend_bonus_days: int = 30

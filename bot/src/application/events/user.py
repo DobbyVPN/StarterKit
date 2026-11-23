@@ -42,6 +42,8 @@ class SubscriptionExpiredEvent(UserEvent):
     )
 
     is_trial: bool
+    # Shown in the notice, "DD.MM.YYYY"; empty when the sender does not know it.
+    expire_date: str = ""
 
     @property
     def event_key(self) -> str:
@@ -87,6 +89,8 @@ class SubscriptionExpiresEvent(UserEvent):
     )
 
     is_trial: bool
+    # Shown in the notice, "DD.MM.YYYY"; empty when the sender does not know it.
+    expire_date: str = ""
     day: int
 
     @property

@@ -178,6 +178,12 @@ def get_renew_keyboard() -> InlineKeyboardMarkup:
             callback_data=f"{GOTO_PREFIX}{PAYMENT_PREFIX}{PurchaseType.RENEW}",
         ),
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="btn-back.menu",
+            callback_data=f"{GOTO_PREFIX}{MainMenu.MAIN.state}",
+        ),
+    )
     return builder.as_markup()
 
 
@@ -187,6 +193,12 @@ def get_buy_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="btn-goto.subscription",
             callback_data=f"{GOTO_PREFIX}{PAYMENT_PREFIX}{PurchaseType.NEW}",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="btn-back.menu",
+            callback_data=f"{GOTO_PREFIX}{MainMenu.MAIN.state}",
         ),
     )
     return builder.as_markup()

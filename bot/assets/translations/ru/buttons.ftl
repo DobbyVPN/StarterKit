@@ -606,6 +606,7 @@ btn-ad-links =
     }
 
 btn-connect =
+    .guide = 🎬 Видео-инструкция
     .ios = 🍏 iPhone
     .android = 🤖 Android
     .windows = 🪟 Windows

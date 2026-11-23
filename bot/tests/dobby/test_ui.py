@@ -20,6 +20,8 @@ from src.core.enums import (
 from src.core.utils.time import datetime_now
 from src.infrastructure.di.providers.i18n import I18nProvider
 from src.infrastructure.dobby.links import is_key_issued
+from src.infrastructure.dobby.reminders import EXPIRED, ReminderRow, build_event
+from src.telegram.keyboards import get_buy_keyboard, get_renew_keyboard
 from src.telegram.routers.extra.goto import on_goto
 from src.telegram.routers.menu.getters import (
     SubState,
@@ -28,7 +30,7 @@ from src.telegram.routers.menu.getters import (
 )
 from src.telegram.routers.subscription import handlers
 from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
-from src.telegram.states import Subscription
+from src.telegram.states import MainMenu, Subscription
 
 KEY = "https://sub.example.com/abc"
 PLACEHOLDER = "https://sub.example.invalid/abc"
@@ -259,13 +261,16 @@ def test_defaults_sell_in_roubles() -> None:
 
 
 def test_expiry_notices_say_why_the_vpn_stopped(i18n: Any) -> None:
-    expired = str(i18n.get("event-subscription.expired", is_trial=0))
-    assert expired.startswith("<b>⏳ Подписка закончилась")
+    expired = str(i18n.get("event-subscription.expired", is_trial=0, expire_date="26.11.2026"))
+    assert expired.startswith("<b>⏳ Подписка закончилась 26.11.2026")
     assert "ключ останется тем же" in expired
-    trial = str(i18n.get("event-subscription.expired", is_trial=1))
-    assert "Пробный период закончился" in trial
-    expiring = str(i18n.get("event-subscription.expiring", is_trial=0, value=3))
-    assert "закончится через" in expiring
+    trial = str(i18n.get("event-subscription.expired", is_trial=1, expire_date="26.11.2026"))
+    assert "Пробный период закончился 26.11.2026" in trial
+    expiring = str(
+        i18n.get("event-subscription.expiring", is_trial=0, value=3, expire_date="26.11.2026")
+    )
+    assert "Осталось 3 дня" in expiring
+    assert "активна до 26.11.2026" in expiring
 
 
 def test_choosing_a_term_does_not_repeat_the_buttons(i18n: Any) -> None:
@@ -301,3 +306,33 @@ def test_reward_days_only_for_fixed_extra_days() -> None:
     assert referral_reward_days(referral) == 30
     referral.reward.strategy = ReferralRewardStrategy.PERCENT
     assert referral_reward_days(referral) == 0
+
+
+def test_payment_screen_says_no_auto_renewal(i18n: Any) -> None:
+    text = str(
+        i18n.get(
+            "msg-subscription-confirm",
+            period="1 месяц",
+            final_amount=199,
+            currency="₽",
+            discount_percent=0,
+            original_amount=199,
+            is_free=0,
+        )
+    )
+    assert "без автопродления" in text
+
+
+@pytest.mark.parametrize("keyboard", [get_renew_keyboard, get_buy_keyboard])
+def test_notice_buttons_include_the_main_menu(keyboard: Any) -> None:
+    rows = keyboard().inline_keyboard
+    assert rows[-1][0].text == "btn-back.menu"
+    assert rows[-1][0].callback_data == f"{GOTO_PREFIX}{MainMenu.MAIN.state}"
+
+
+def test_reminders_carry_the_expiry_date() -> None:
+    expire_at = datetime_now().replace(year=2026, month=11, day=26)
+    row = ReminderRow(1, uuid4(), expire_at, False)
+    user = SimpleNamespace(id=1)
+    assert build_event(EXPIRED, row, user).expire_date == "26.11.2026"  # type: ignore[attr-defined]
+    assert build_event("before_72h", row, user).expire_date == "26.11.2026"  # type: ignore[attr-defined]

@@ -190,6 +190,10 @@ connect = Window(
         when=F["key_issued"],
     ),
     Row(
+        Url(text=I18nFormat("btn-connect.guide"), id="guide", url=Format("{guide_url}")),
+        when=F["guide_url"],
+    ),
+    Row(
         SwitchTo(
             text=I18nFormat("btn-menu.download"),
             id="download",

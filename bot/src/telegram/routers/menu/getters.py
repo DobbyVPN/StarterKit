@@ -321,4 +321,5 @@ async def connect_getter(
         "url_android": dobby_config.download_url_android,
         "url_windows": dobby_config.download_url_windows,
         "url_macos": dobby_config.download_url_macos,
+        "guide_url": dobby_config.connect_guide_url,
     }
