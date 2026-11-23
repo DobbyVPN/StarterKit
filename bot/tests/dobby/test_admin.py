@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from adaptix import Retort
+from magic_filter import F
 
 from src.application.dto import TelegramUserDto
 from src.application.use_cases.subscription.commands.management import AddSubscriptionDuration
@@ -28,6 +29,7 @@ from src.infrastructure.dobby.admin import (
     payment_allowed_in_client_view,
 )
 from src.telegram.routers.menu.getters import admin_screen_data
+from src.telegram.widgets import I18nFormat
 
 NOW = datetime(2026, 11, 23, 10, 0, tzinfo=timezone.utc)  # 13:00 in Moscow
 TZ = "Europe/Moscow"
@@ -182,3 +184,12 @@ def test_free_grants_cannot_create_payments(use_case: type) -> None:
     params = inspect.signature(use_case.__init__).parameters.values()
     kinds = {getattr(p.annotation, "__name__", str(p.annotation)) for p in params}
     assert not kinds & {"TransactionDao", "CreatePayment", "ProcessPayment"}
+
+
+def test_i18n_text_condition_works_by_keyword() -> None:
+    # It used to be positional only: a keyword "when" was taken as a text value and the
+    # text was always shown (the summary appeared in client view).
+    widget = I18nFormat("msg-admin-home", when=F["admin_view"])
+    assert "when" not in widget.mapping
+    assert widget.is_({"admin_view": True}, None) is True  # type: ignore[arg-type]
+    assert widget.is_({"admin_view": False}, None) is False  # type: ignore[arg-type]

@@ -19,7 +19,6 @@ class I18nFormat(Text):
         self,
         key: str,
         when: Optional[WhenCondition] = None,
-        /,
         **mapping: Union[TextWidget, MagicFilter, str, int, float, bool],
     ) -> None:
         super().__init__(when)
