@@ -9,16 +9,24 @@ from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
 from src.application.common import Notifier, Redirect
-from src.application.common.dao import SettingsDao, SubscriptionDao
+from src.application.common.dao import PlanDao, SettingsDao, SubscriptionDao
 from src.application.dto import (
     MediaDescriptorDto,
     MessagePayloadDto,
     PlanSnapshotDto,
     TelegramUserDto,
 )
+from src.application.use_cases.subscription.commands.management import (
+    AddSubscriptionDuration,
+    AddSubscriptionDurationDto,
+)
 from src.application.use_cases.subscription.commands.purchase import (
     ActivateTrialSubscription,
     ActivateTrialSubscriptionDto,
+)
+from src.application.use_cases.subscription.commands.set_plan import (
+    SetUserSubscription,
+    SetUserSubscriptionDto,
 )
 from src.application.use_cases.user.commands.profile_edit import ResetOwnReferralCode
 from src.application.use_cases.user.queries.plans import GetAvailableTrial
@@ -26,6 +34,7 @@ from src.core.constants import USER_KEY
 from src.core.enums import PurchaseType
 from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
+from src.infrastructure.dobby.admin import ClientViewStore, gift_action
 from src.telegram.keyboards import CALLBACK_CHANNEL_CONFIRM, CALLBACK_RULES_ACCEPT
 from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import MainMenu, Subscription
@@ -210,3 +219,63 @@ async def on_buy(
         state=Subscription.MAIN,
         data={PURCHASE_TYPE_KEY: purchase_type},
     )
+
+
+@inject
+async def on_client_view_on(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    client_view: FromDishka[ClientViewStore],
+) -> None:
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    await client_view.set(user.id, True)
+    logger.info(f"{user.log} Switched to client view")
+    await dialog_manager.switch_to(MainMenu.MAIN)
+
+
+@inject
+async def on_client_view_off(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    client_view: FromDishka[ClientViewStore],
+) -> None:
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    await client_view.set(user.id, False)
+    logger.info(f"{user.log} Left client view")
+    await dialog_manager.start(MainMenu.MAIN, mode=StartMode.RESET_STACK)
+
+
+@inject
+async def on_gift_self(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    subscription_dao: FromDishka[SubscriptionDao],
+    plan_dao: FromDishka[PlanDao],
+    add_duration: FromDishka[AddSubscriptionDuration],
+    set_subscription: FromDishka[SetUserSubscription],
+    notifier: FromDishka[Notifier],
+) -> None:
+    """A free subscription for the admin: no payment, so nothing counts as revenue."""
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    days = int((widget.widget_id or "gift_30").removeprefix("gift_"))
+    current = await subscription_dao.get_current(user.id)
+    active_until = current.expire_at if current and current.is_active else None
+    action = gift_action(active_until, bool(current and current.is_unlimited), days)
+
+    if action == "extend":
+        await add_duration(user, AddSubscriptionDurationDto(user_id=user.id, days=days))
+    else:
+        plans = [p for p in await plan_dao.get_active_plans() if not p.is_trial]
+        if not plans:
+            await notifier.notify_user(user, i18n_key="ntf-admin.gift-no-plan")
+            return
+        await set_subscription(
+            user, SetUserSubscriptionDto(user_id=user.id, plan_id=plans[0].id, duration=days)
+        )
+
+    logger.info(f"{user.log} Gave themselves a subscription: '{action}' {days} days")
+    await notifier.notify_user(user, i18n_key="ntf-admin.gift-done")
+    await dialog_manager.switch_to(MainMenu.MY_VPN)

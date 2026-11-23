@@ -12,6 +12,7 @@ from src.application.common.referral_bonus import ReferralFriendBonus
 from src.application.use_cases.gateways.commands.payment import ProcessPayment
 from src.application.use_cases.gateways.queries.providers import GetPaymentGatewayInstance
 
+from .admin import AdminSummaryService, ClientViewStore, RedisClientViewStore
 from .backend import DobbyBackend, ExportTrigger
 from .config import DobbyConfig
 from .downloads import AndroidDownloadLink
@@ -78,6 +79,14 @@ class DobbyProvider(Provider):
     @provide
     def get_android_download_link(self, config: DobbyConfig) -> AndroidDownloadLink:
         return AndroidDownloadLink(config.releases_repository, config.download_url_android)
+
+    @provide
+    def get_client_view_store(self, redis: Redis) -> ClientViewStore:
+        return RedisClientViewStore(redis)
+
+    @provide(scope=Scope.REQUEST)
+    def get_admin_summary(self, session: AsyncSession, config: DobbyConfig) -> AdminSummaryService:
+        return AdminSummaryService(session, config.timezone)
 
     @provide
     def get_referral_friend_bonus(self, config: DobbyConfig) -> ReferralFriendBonus:

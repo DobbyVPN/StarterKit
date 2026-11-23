@@ -184,6 +184,7 @@ def test_payment_screen(i18n: Any) -> None:
             discount_percent=0,
             original_amount=499,
             is_free=0,
+            client_view_blocked=0,
         )
     )
     assert "3 месяца" in text and "499" in text
@@ -318,6 +319,7 @@ def test_payment_screen_says_no_auto_renewal(i18n: Any) -> None:
             discount_percent=0,
             original_amount=199,
             is_free=0,
+            client_view_blocked=0,
         )
     )
     assert "без автопродления" in text

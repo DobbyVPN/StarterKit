@@ -289,6 +289,7 @@ async def confirm_getter(
         "only_single_duration": only_single_duration,
         "only_single_plan": only_single_plan,
         "is_free": is_free,
+        "client_view_blocked": dialog_manager.dialog_data.get("client_view_blocked", False),
         "plan_is_modified": plan_is_modified,
     }
 

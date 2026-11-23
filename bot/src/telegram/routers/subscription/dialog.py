@@ -209,7 +209,7 @@ confirm = Window(
             text=I18nFormat("btn-subscription.get"),
             id=f"{PAYMENT_PREFIX}get",
             on_click=on_get_subscription,
-            when=~F["url"],
+            when=~F["url"] & ~F["client_view_blocked"],
             style=Style(ButtonStyle.SUCCESS),
         ),
     ),

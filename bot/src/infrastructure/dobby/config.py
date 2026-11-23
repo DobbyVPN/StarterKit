@@ -42,6 +42,9 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
     download_url_android: str = ""
     releases_repository: str = "DobbyVPN/DobbyVPN"
 
+    # The owner's time zone: where "today" and "this month" start in the admin summary.
+    timezone: str = "Europe/Moscow"
+
     # Optional video or page showing how to connect; adds a button to "Connect DobbyVPN".
     connect_guide_url: str = ""
 

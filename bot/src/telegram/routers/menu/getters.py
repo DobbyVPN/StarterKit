@@ -9,6 +9,7 @@ from loguru import logger
 
 from src.application.common import BotService, Remnawave, TranslatorRunner
 from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao
+from src.application.common.policy import Permission, PermissionPolicy
 from src.application.dto import SubscriptionDto, TelegramUserDto
 from src.application.dto.settings import ReferralSettingsDto
 from src.application.use_cases.misc.queries.menu import GetMenuData
@@ -22,6 +23,7 @@ from src.core.enums import (
 )
 from src.core.exceptions import MenuRenderError
 from src.core.utils.time import datetime_now
+from src.infrastructure.dobby.admin import AdminSummaryService, ClientViewStore, format_amounts
 from src.infrastructure.dobby.config import DobbyConfig
 from src.infrastructure.dobby.downloads import AndroidDownloadLink
 from src.infrastructure.dobby.links import is_key_issued
@@ -36,6 +38,8 @@ async def menu_getter(
     i18n: FromDishka[TranslatorRunner],
     get_menu_data: FromDishka[GetMenuData],
     settings_dao: FromDishka[SettingsDao],
+    client_view: FromDishka[ClientViewStore],
+    admin_summary: FromDishka[AdminSummaryService],
     **kwargs: Any,
 ) -> dict[str, Any]:
     try:
@@ -89,6 +93,7 @@ async def menu_getter(
             "row_2_buttons": [b for b in menu_data.custom_buttons if b.index in (3, 4)],
             "row_3_buttons": [b for b in menu_data.custom_buttons if b.index in (5, 6)],
         }
+        data.update(await admin_screen_data(user, client_view, admin_summary, dialog_manager))
 
         if not menu_data.current_subscription:
             logger.debug(f"{user.log} has no active subscription")
@@ -125,6 +130,33 @@ def referral_reward_days(referral: ReferralSettingsDto) -> int:
     ):
         return 0
     return max(reward.config.get(ReferralLevel.FIRST, 0), 0)
+
+
+async def admin_screen_data(
+    user: TelegramUserDto,
+    client_view: ClientViewStore,
+    admin_summary: AdminSummaryService,
+    dialog_manager: DialogManager,
+) -> dict[str, Any]:
+    """Admins see the summary instead of the client screen, unless they view as a client."""
+    is_admin = PermissionPolicy.has_permission(user, Permission.VIEW_DASHBOARD)
+    client_mode = is_admin and await client_view.is_on(user.id)
+    data: dict[str, Any] = {
+        "is_admin": is_admin,
+        "client_mode": client_mode,
+        "admin_view": is_admin and not client_mode,
+    }
+    if data["admin_view"]:
+        summary = await admin_summary.get(datetime_now())
+        data.update(
+            {
+                "active_subscriptions": summary.active,
+                "expiring_soon": summary.expiring_soon,
+                "revenue_today": format_amounts(summary.revenue_today),
+                "revenue_month": format_amounts(summary.revenue_month),
+            }
+        )
+    return data
 
 
 class SubState(StrEnum):
