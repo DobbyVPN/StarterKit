@@ -62,6 +62,7 @@ btn-requirement =
     .channel-confirm = ✅ Подтвердить
 
 btn-menu =
+    .download = ⬇️ Скачать DobbyVPN
     .how-it-works = ❓ Как это работает
     .renew = 🔄 Продлить
     .buy = 💳 Купить подписку
@@ -85,7 +86,7 @@ btn-menu =
 
 btn-invite =
     .about = ❓ Подробнее о награде
-    .copy = 📋 Скопировать ссылку
+    .copy = Скопировать ссылку
     .send = 📩 Пригласить
     .qr = 🧾 QR-код
     .withdraw-points = 💎 Обменять баллы
@@ -609,4 +610,4 @@ btn-connect =
     .android = 🤖 Android
     .windows = 🪟 Windows
     .macos = 💻 macOS
-    .copy-key = 📋 Скопировать ключ
+    .copy-key = Скопировать ключ

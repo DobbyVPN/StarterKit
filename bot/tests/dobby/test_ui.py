@@ -144,11 +144,22 @@ def test_no_traffic_or_devices_on_the_main_screen(i18n: Any, state: str) -> None
     assert "устройств" not in text.replace("на все устройства", "")
 
 
-def test_connect_screen(i18n: Any) -> None:
-    issued = str(i18n.get("msg-menu-connect", key_issued=1))
-    placeholder = str(i18n.get("msg-menu-connect", key_issued=0))
-    assert "Скопировать ключ" in issued
-    assert "появится в течение пары минут" in placeholder
+def test_connect_and_download_screens(i18n: Any) -> None:
+    connect = str(i18n.get("msg-menu-connect"))
+    assert "Скопировать ключ" in connect
+    assert "Скачать DobbyVPN" in connect  # for those without the app
+    assert "подписка нужна" in str(i18n.get("msg-menu-download"))
+
+
+def test_waiting_for_the_key_suggests_downloading(i18n: Any) -> None:
+    text = main_menu(i18n, sub_state="ACTIVE", key_issued=0, sub_key=PLACEHOLDER)
+    assert "скачать приложение" in text
+
+
+def test_copy_buttons_have_no_own_icon(i18n: Any) -> None:
+    # Telegram draws its own icon on copy buttons.
+    for key in ("btn-invite.copy", "btn-connect.copy-key"):
+        assert str(i18n.get(key))[0].isalpha()
 
 
 def test_payment_screen(i18n: Any) -> None:

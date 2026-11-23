@@ -12,6 +12,7 @@ class MainMenu(StatesGroup):
     INVITE = State()
     INVITE_ABOUT = State()
     CONNECT = State()
+    DOWNLOAD = State()
     HOW_IT_WORKS = State()
 
 

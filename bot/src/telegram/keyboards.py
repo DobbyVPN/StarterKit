@@ -87,7 +87,8 @@ custom_buttons = (
 )
 
 
-# Opens the "Connect DobbyVPN" screen (download the app, copy the key).
+# After a purchase or trial: "Connect DobbyVPN" once the key is issued, otherwise
+# "Download DobbyVPN" (the key arrives later; the app can be installed meanwhile).
 connect_buttons = (
     Row(
         Start(
@@ -96,6 +97,15 @@ connect_buttons = (
             state=MainMenu.CONNECT,
             mode=StartMode.RESET_STACK,
             style=Style(ButtonStyle.SUCCESS),
+            when=F["key_issued"],
+        ),
+        Start(
+            text=I18nFormat("btn-menu.download"),
+            id="download_dobby",
+            state=MainMenu.DOWNLOAD,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.SUCCESS),
+            when=~F["key_issued"],
         ),
     ),
 )

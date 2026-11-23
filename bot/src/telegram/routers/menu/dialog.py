@@ -86,13 +86,21 @@ menu = Window(
         support_button,
         when=F["sub_state"] == "NONE",
     ),
-    # Active
+    # Active: connect once the key is issued; until then the app can already be downloaded.
     Row(
         SwitchTo(
             text=I18nFormat("btn-menu.connect"),
             id="connect",
             state=MainMenu.CONNECT,
             style=Style(ButtonStyle.SUCCESS),
+            when=F["key_issued"],
+        ),
+        SwitchTo(
+            text=I18nFormat("btn-menu.download"),
+            id="download",
+            state=MainMenu.DOWNLOAD,
+            style=Style(ButtonStyle.SUCCESS),
+            when=~F["key_issued"],
         ),
         when=F["sub_state"] == "ACTIVE",
     ),
@@ -146,9 +154,7 @@ menu = Window(
     getter=menu_getter,
 )
 
-connect = Window(
-    Banner(BannerName.MENU),
-    I18nFormat("msg-menu-connect"),
+download_links = (
     Row(
         Url(text=I18nFormat("btn-connect.ios"), id="dl_ios", url=Format("{url_ios}")),
         Url(text=I18nFormat("btn-connect.android"), id="dl_android", url=Format("{url_android}")),
@@ -157,12 +163,38 @@ connect = Window(
         Url(text=I18nFormat("btn-connect.windows"), id="dl_windows", url=Format("{url_windows}")),
         Url(text=I18nFormat("btn-connect.macos"), id="dl_macos", url=Format("{url_macos}")),
     ),
+)
+
+# Download only: works before buying and while the key is on its way.
+download = Window(
+    Banner(BannerName.MENU),
+    I18nFormat("msg-menu-download"),
+    *download_links,
+    Row(
+        SwitchTo(text=I18nFormat("btn-back.general"), id="back", state=MainMenu.MAIN),
+    ),
+    IgnoreUpdate(),
+    state=MainMenu.DOWNLOAD,
+    getter=connect_getter,
+)
+
+# Connect: needs the key. Downloading is one tap away for those without the app.
+connect = Window(
+    Banner(BannerName.MENU),
+    I18nFormat("msg-menu-connect"),
     Row(
         CopyText(
             text=I18nFormat("btn-connect.copy-key"),
             copy_text=Format("{sub_key}"),
         ),
         when=F["key_issued"],
+    ),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-menu.download"),
+            id="download",
+            state=MainMenu.DOWNLOAD,
+        ),
     ),
     Row(
         SwitchTo(text=I18nFormat("btn-back.general"), id="back", state=MainMenu.MAIN),
@@ -186,6 +218,9 @@ how_it_works = Window(
     ),
     Row(
         Button(text=I18nFormat("btn-menu.buy"), id="buy", on_click=on_buy),
+    ),
+    Row(
+        SwitchTo(text=I18nFormat("btn-menu.download"), id="download", state=MainMenu.DOWNLOAD),
     ),
     Row(
         SwitchTo(text=I18nFormat("btn-back.general"), id="back", state=MainMenu.MAIN),
@@ -243,4 +278,4 @@ invite = Window(
     getter=invite_getter,
 )
 
-router = Dialog(menu, connect, how_it_works, invite)
+router = Dialog(menu, connect, download, how_it_works, invite)
