@@ -25,11 +25,13 @@ from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.states import Subscription
 
 # Start data key: open the dialog straight on choosing a term for this purchase type.
-PURCHASE_TYPE_KEY = "purchase_type"
+# Distinct from "purchase_type", which the success screen receives after a payment.
+PURCHASE_TYPE_KEY = "begin_purchase_type"
 
 
 async def on_subscription_start(start_data: Any, manager: DialogManager) -> None:
-    if isinstance(start_data, dict) and PURCHASE_TYPE_KEY in start_data:
+    starts_on_main = manager.current_context().state == Subscription.MAIN
+    if starts_on_main and isinstance(start_data, dict) and PURCHASE_TYPE_KEY in start_data:
         await _begin_purchase_from_container(manager, PurchaseType(start_data[PURCHASE_TYPE_KEY]))
         return
 

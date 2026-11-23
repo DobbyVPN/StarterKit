@@ -7,14 +7,16 @@ import pytest
 from adaptix import Retort
 
 from src.application.dto import PlanSnapshotDto, SubscriptionDto
+from src.application.dto.settings import SettingsDto
 from src.core.config import AppConfig
 from src.core.constants import GOTO_PREFIX, PAYMENT_PREFIX
-from src.core.enums import Locale, PurchaseType, SubscriptionStatus
+from src.core.enums import Currency, Locale, PurchaseType, SubscriptionStatus
 from src.core.utils.time import datetime_now
 from src.infrastructure.di.providers.i18n import I18nProvider
 from src.infrastructure.dobby.links import is_key_issued
 from src.telegram.routers.extra.goto import on_goto
 from src.telegram.routers.menu.getters import SubState, subscription_screen_data
+from src.telegram.routers.subscription import handlers
 from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import Subscription
 
@@ -199,3 +201,37 @@ async def test_reminder_button_opens_choosing_a_term(purchase_type: PurchaseType
     (started,) = manager.started
     assert started["state"] == Subscription.MAIN
     assert started["data"] == {PURCHASE_TYPE_KEY: purchase_type}
+
+
+class FakeStartManager:
+    def __init__(self, state: object) -> None:
+        self.state = state
+        self.middleware_data: dict[str, Any] = {}
+
+    def current_context(self) -> Any:
+        return SimpleNamespace(state=self.state)
+
+
+async def test_success_screen_after_payment_does_not_restart_the_purchase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: list[Any] = []
+
+    async def fake_begin(manager: Any, purchase_type: PurchaseType) -> None:
+        started.append(purchase_type)
+
+    monkeypatch.setattr(handlers, "_begin_purchase_from_container", fake_begin)
+
+    # What the payment redirect passes when it opens the success screen.
+    success = FakeStartManager(Subscription.SUCCESS)
+    await handlers.on_subscription_start({"purchase_type": PurchaseType.NEW}, success)  # type: ignore[arg-type]
+    assert started == []
+
+    # "Buy" / "Renew" / reminder buttons.
+    main = FakeStartManager(Subscription.MAIN)
+    await handlers.on_subscription_start({PURCHASE_TYPE_KEY: PurchaseType.RENEW}, main)  # type: ignore[arg-type]
+    assert started == [PurchaseType.RENEW]
+
+
+def test_defaults_sell_in_roubles() -> None:
+    assert SettingsDto().default_currency == Currency.RUB

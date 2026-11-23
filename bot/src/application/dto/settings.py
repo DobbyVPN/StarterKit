@@ -235,7 +235,8 @@ class ExtraSettingsDto(TrackableMixin):
 
 @dataclass(kw_only=True)
 class SettingsDto(BaseDto, TrackableMixin, TimestampMixin):
-    default_currency: Currency = Currency.XTR
+    # Prices are shown in this currency; YooKassa charges in roubles.
+    default_currency: Currency = Currency.RUB
     access: AccessSettingsDto = field(default_factory=AccessSettingsDto)
     requirements: RequirementSettingsDto = field(default_factory=RequirementSettingsDto)
     notifications: NotificationsSettingsDto = field(default_factory=NotificationsSettingsDto)
