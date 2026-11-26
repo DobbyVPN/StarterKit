@@ -165,6 +165,7 @@ the login like this, or read from a file the config-delivery service sends back.
 | `DOBBY_DOWNLOAD_URL_IOS`, `_ANDROID`, `_WINDOWS`, `_MACOS` | Download links on "Download DobbyVPN" |
 | `DOBBY_CONNECT_GUIDE_URL` | Optional video or page on how to connect; adds a button to "Connect DobbyVPN" |
 | `DOBBY_REFERRAL_FRIEND_BONUS_DAYS` | Days the invited friend gets on their first payment, default 30 (0 = off) |
+| `DOBBY_PURCHASE_WIDGET` | Choose and pay in one message widget (Bot API 10.4), default `true`. Used when exactly one payment gateway is active; otherwise, or when `false`, the usual screens |
 | `REMNAWAVE_TOKEN`, `REMNAWAVE_WEBHOOK_SECRET` | Still required by remnashop's config validation; any value works. To be removed |
 
 **Admin menu in the bot** (remnashop as is): plans, prices, trial, payment gateways and their

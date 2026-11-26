@@ -368,6 +368,7 @@ class MiddlewareEventType(StrEnum):
     CHAT_JOIN_REQUEST = auto()
     CHAT_BOOST = auto()
     REMOVED_CHAT_BOOST = auto()
+    WIDGET_QUERY = auto()
     ERROR = auto()
 
 

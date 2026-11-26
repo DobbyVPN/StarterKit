@@ -29,6 +29,7 @@ class UserMiddleware(EventTypedMiddleware):
         MiddlewareEventType.AIOGD_UPDATE,
         MiddlewareEventType.MY_CHAT_MEMBER,
         MiddlewareEventType.PRE_CHECKOUT_QUERY,
+        MiddlewareEventType.WIDGET_QUERY,
     ]
 
     async def middleware_logic(

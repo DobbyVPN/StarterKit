@@ -147,6 +147,17 @@ def payment_allowed_in_client_view(
     )
 
 
+async def live_payment_blocked(
+    store: ClientViewStore, user_id: int, gateway_type: PaymentGatewayType, settings: object
+) -> bool:
+    """An admin viewing as a client may only pay through a YooKassa test shop."""
+    if not await store.is_on(user_id):
+        return False
+    api_key = getattr(settings, "api_key", None)
+    secret = api_key.get_secret_value() if api_key is not None else None
+    return not payment_allowed_in_client_view(gateway_type, secret)
+
+
 class AdminSummaryService:
     def __init__(self, session: AsyncSession, timezone: str) -> None:
         self.session = session

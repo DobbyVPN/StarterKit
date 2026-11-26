@@ -44,6 +44,8 @@ class DobbyConfig(BaseConfig, env_prefix="DOBBY_"):
 
     # The owner's time zone: where "today" and "this month" start in the admin summary.
     timezone: str = "Europe/Moscow"
+    # Choosing and paying in one message widget (Bot API 10.4). Off: the usual screens only.
+    purchase_widget: bool = True
 
     # Optional video or page showing how to connect; adds a button to "Connect DobbyVPN".
     connect_guide_url: str = ""

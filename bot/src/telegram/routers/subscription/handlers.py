@@ -28,7 +28,7 @@ from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
 from src.core.constants import PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
-from src.infrastructure.dobby.admin import ClientViewStore, payment_allowed_in_client_view
+from src.infrastructure.dobby.admin import ClientViewStore, live_payment_blocked
 from src.telegram.states import Subscription
 
 # Start data key: open the dialog straight on choosing a term for this purchase type.
@@ -144,14 +144,10 @@ async def _create_payment_and_get_data(
 async def _blocked_in_client_view(
     dialog_manager: DialogManager, gateway: PaymentGatewayDto
 ) -> bool:
-    """An admin viewing as a client may only pay through a YooKassa test shop."""
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     container = dialog_manager.middleware_data["dishka_container"]
-    if not await (await container.get(ClientViewStore)).is_on(user.id):
-        return False
-    api_key = getattr(gateway.settings, "api_key", None)
-    secret = api_key.get_secret_value() if api_key is not None else None
-    return not payment_allowed_in_client_view(gateway.type, secret)
+    store = await container.get(ClientViewStore)
+    return await live_payment_blocked(store, user.id, gateway.type, gateway.settings)
 
 
 async def _resolve_renew_plan(
