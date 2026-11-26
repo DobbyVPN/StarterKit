@@ -275,7 +275,7 @@ class NotificationService(Notifier):
         try:
             if payload.is_text:
                 await self.bot.send_message(
-                    chat_id=chat_id,  # type:ignore[arg-type]
+                    chat_id=chat_id,
                     text=text,
                     message_thread_id=thread_id,
                     disable_web_page_preview=True,

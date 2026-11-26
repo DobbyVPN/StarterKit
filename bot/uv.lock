@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 
 [[package]]
@@ -22,7 +22,7 @@ wheels = [
 
 [[package]]
 name = "aiogram"
-version = "3.25.0"
+version = "3.34.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -32,23 +32,23 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/31/360c4ce76e60e9e7bcdda1af1ab4331d78837fbb22847a62121ad32b7672/aiogram-3.25.0.tar.gz", hash = "sha256:8a8b0c34f8c4ca8a6501b954abb0eeba26743449e35e20b70c0d810347354c3c", size = 1721010, upload-time = "2026-02-10T21:50:25.473Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/92/e2afbfee7c58f72bd4578e00926ab27b9f906d35e7a8eb780d14dd6abbd4/aiogram-3.34.0.tar.gz", hash = "sha256:7b2dd2f7396675339c8cd1338341a6f07633542ffcd67185e6eeb20519df5707", size = 2573111, upload-time = "2026-11-22T21:55:26.255Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/be/1090252415e192687985517162dbdcee2ec4150cda1fa52bf57ae1f1c2a8/aiogram-3.25.0-py3-none-any.whl", hash = "sha256:0243966e93fbde14e90c0dfd0b3776c637ebf7ddcca2c7ee81ecbd68d9490cce", size = 713972, upload-time = "2026-02-10T21:50:23.253Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/7f/856cd4abbc9bdebeb82c886a0e99f9103d14b1462b9146d2bf5c3cac5e7a/aiogram-3.34.0-py3-none-any.whl", hash = "sha256:830e3067fe5040740e685986f5b7b3fdeec11435f650a503ffce8dbe2d4fd407", size = 1128441, upload-time = "2026-11-22T21:55:24.326Z" },
 ]
 
 [[package]]
 name = "aiogram-dialog"
-version = "2.5.0"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiogram" },
     { name = "cachetools" },
     { name = "jinja2" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/6e/3d38f6d8207bcb13547534f31bd1d0a4f58f8b1463e1c434662e877a6d79/aiogram_dialog-2.5.0.tar.gz", hash = "sha256:b2deaec90091562aa0d6e606c54ac4abd7eefd4ec17cdb8058738b94b2c17235", size = 2058286, upload-time = "2026-02-24T23:02:52.32Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/7c/577f87d0fa548dcc584f27228fef696e6e6eeebda147b25941fe45dddee7/aiogram_dialog-2.6.0.tar.gz", hash = "sha256:766ad1ca994b9c33a54a9a5367bf6165041236b8dfec2aac5d334e55d64805f0", size = 2060669, upload-time = "2026-03-22T12:30:22.477Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/10/60655e2c12b2cb26fa4d7311eb4f5ddd0e9a37330a162da78885509a3b19/aiogram_dialog-2.5.0-py3-none-any.whl", hash = "sha256:9d5aedb1603da813aab3c8d734383abee3e84c1186b07b7dc188289b3ea048db", size = 119679, upload-time = "2026-02-24T23:02:50.889Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/aa/a4d09e8d06051831f06802cd9137fa3c4786f84e82c2ca3afac482f8b419/aiogram_dialog-2.6.0-py3-none-any.whl", hash = "sha256:57ca958db71c8ee5e40a8d554e9661f91659f62891bddeb3d890cd4fe88c8f41", size = 120549, upload-time = "2026-03-22T12:30:24.325Z" },
 ]
 
 [package.optional-dependencies]
@@ -1078,7 +1078,7 @@ wheels = [
 
 [[package]]
 name = "remnapy"
-version = "2.7.1.dev4+g95e15ed2e"
+version = "0.1.dev170+g95e15ed2e"
 source = { git = "https://github.com/snoups/remnapy?rev=95e15ed#95e15ed2ea29aa62f112a8af790d6151f5db5fb1" }
 dependencies = [
     { name = "cryptography" },
@@ -1135,8 +1135,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "adaptix", specifier = "==3.0.0b11" },
-    { name = "aiogram", specifier = "~=3.25.0" },
-    { name = "aiogram-dialog", specifier = "~=2.5.0" },
+    { name = "aiogram", specifier = "~=3.34.0" },
+    { name = "aiogram-dialog", specifier = "~=2.6.0" },
     { name = "aiohttp-socks", specifier = ">=0.10.0" },
     { name = "alembic", specifier = "~=1.16.5" },
     { name = "asyncpg", specifier = "~=0.30.0" },
@@ -1161,7 +1161,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aiogram-dialog", extras = ["tools"], specifier = "~=2.5.0" },
+    { name = "aiogram-dialog", extras = ["tools"], specifier = "~=2.6.0" },
     { name = "ftl-extract", specifier = ">=0.9.0" },
     { name = "mypy", specifier = ">=1.18.2" },
     { name = "pytest", specifier = ">=8.4.2" },
