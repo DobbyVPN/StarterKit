@@ -1,5 +1,5 @@
 from aiogram.enums import ButtonStyle
-from aiogram_dialog import Dialog, Window
+from aiogram_dialog import Dialog, StartMode, Window
 from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
@@ -9,9 +9,9 @@ from src.core.constants import PAYMENT_PREFIX
 from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
 from src.telegram.keyboards import back_main_menu_button, connect_buttons
 from src.telegram.routers.extra.payment_check import on_paid_button
-from src.telegram.states import Subscription
+from src.telegram.states import MainMenu, Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
-from src.telegram.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
+from src.telegram.widgets.kbd import Button, Column, Group, Row, Select, Start, SwitchTo, Url
 
 from .getters import (
     confirm_getter,
@@ -102,13 +102,6 @@ plans = Window(
             on_click=on_plan_select,
         ),
     ),
-    Row(
-        SwitchTo(
-            text=I18nFormat("btn-back.general"),
-            id=f"{PAYMENT_PREFIX}back",
-            state=Subscription.MAIN,
-        ),
-    ),
     *back_main_menu_button,
     IgnoreUpdate(),
     state=Subscription.PLANS,
@@ -138,13 +131,29 @@ duration = Window(
     ),
     Row(
         SwitchTo(
-            text=I18nFormat("btn-subscription.back-plans"),
-            id=f"{PAYMENT_PREFIX}back_plans",
-            state=Subscription.PLANS,
-            when=~F["only_single_plan"],
+            text=I18nFormat("btn-subscription.promocode"),
+            id="goto_promocode",
+            state=Subscription.PROMOCODE,
         ),
     ),
-    *back_main_menu_button,
+    # One "Back": to the plan list when there are several plans, otherwise to the main screen.
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id=f"{PAYMENT_PREFIX}back_plans",
+            state=Subscription.PLANS,
+        ),
+        when=~F["only_single_plan"],
+    ),
+    Row(
+        Start(
+            text=I18nFormat("btn-back.general"),
+            id="back_main_menu",
+            state=MainMenu.MAIN,
+            mode=StartMode.RESET_STACK,
+        ),
+        when=F["only_single_plan"],
+    ),
     IgnoreUpdate(),
     state=Subscription.DURATION,
     getter=duration_getter,
@@ -172,21 +181,11 @@ payment_method = Window(
     ),
     Row(
         SwitchTo(
-            text=I18nFormat("btn-subscription.back-duration"),
+            text=I18nFormat("btn-back.general"),
             id=f"{PAYMENT_PREFIX}back",
             state=Subscription.DURATION,
-            when=~F["only_single_duration"],
         ),
     ),
-    Row(
-        SwitchTo(
-            text=I18nFormat("btn-subscription.back-plans"),
-            id=f"{PAYMENT_PREFIX}back_plans",
-            state=Subscription.PLANS,
-            when=~F["only_single_plan"],
-        ),
-    ),
-    *back_main_menu_button,
     IgnoreUpdate(),
     state=Subscription.PAYMENT_METHOD,
     getter=payment_method_getter,
@@ -197,7 +196,11 @@ confirm = Window(
     I18nFormat("msg-subscription-confirm"),
     Row(
         Url(
-            text=I18nFormat("btn-subscription.pay"),
+            text=I18nFormat(
+                "btn-subscription.pay",
+                final_amount=F["final_amount"],
+                currency=F["currency"],
+            ),
             url=Format("{url}"),
             when=F["url"],
             style=Style(ButtonStyle.SUCCESS),
@@ -218,29 +221,23 @@ confirm = Window(
             when=F["url"],
         ),
     ),
+    # One "Back": to the payment method when there is a choice, otherwise to the term.
     Row(
         SwitchTo(
-            text=I18nFormat("btn-subscription.back-payment-method"),
+            text=I18nFormat("btn-back.general"),
             id=f"{PAYMENT_PREFIX}back_payment_method",
             state=Subscription.PAYMENT_METHOD,
-            when=~F["only_single_gateway"] & ~F["is_free"],
         ),
-        SwitchTo(
-            text=I18nFormat("btn-subscription.back-duration"),
-            id=f"{PAYMENT_PREFIX}back_duration",
-            state=Subscription.DURATION,
-            when=F["only_single_gateway"] & ~F["only_single_duration"] | F["is_free"],
-        ),
+        when=~F["only_single_gateway"] & ~F["is_free"],
     ),
     Row(
         SwitchTo(
-            text=I18nFormat("btn-subscription.back-plans"),
-            id=f"{PAYMENT_PREFIX}back_plans",
-            state=Subscription.PLANS,
-            when=~F["only_single_plan"],
+            text=I18nFormat("btn-back.general"),
+            id=f"{PAYMENT_PREFIX}back_duration",
+            state=Subscription.DURATION,
         ),
+        when=F["only_single_gateway"] | F["is_free"],
     ),
-    *back_main_menu_button,
     IgnoreUpdate(),
     state=Subscription.CONFIRM,
     getter=confirm_getter,
@@ -249,7 +246,7 @@ confirm = Window(
 success_payment = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-success"),
-    *connect_buttons,
+    Group(*connect_buttons, when=F["purchase_type"] == PurchaseType.NEW),
     *back_main_menu_button,
     IgnoreUpdate(),
     state=Subscription.SUCCESS,
@@ -295,10 +292,22 @@ promocode_window = Window(
             when=F["has_promo"],
         ),
     ),
-    SwitchTo(
-        text=I18nFormat("btn-back.general"),
-        id="back_main",
-        state=Subscription.MAIN,
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id="back_duration",
+            state=Subscription.DURATION,
+        ),
+        when=F["from_purchase"],
+    ),
+    Row(
+        Start(
+            text=I18nFormat("btn-back.general"),
+            id="back_main_menu",
+            state=MainMenu.MAIN,
+            mode=StartMode.RESET_STACK,
+        ),
+        when=~F["from_purchase"],
     ),
     state=Subscription.PROMOCODE,
     getter=getter_promocode,

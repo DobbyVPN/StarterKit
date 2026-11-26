@@ -1,51 +1,29 @@
 # Menu
 msg-main-menu =
-    { hdr-user-profile }
-    { frg-user }
-
-    { hdr-subscription }
-    { $status ->
-    [ACTIVE]
-    { frg-subscription }
-    [EXPIRED]
-    <blockquote>
-    • Срок действия истек.
-    
-    <i>{ $is_trial ->
-    [0] Ваша подписка истекла. Продлите ее, чтобы продолжить пользоваться сервисом!
-    *[1] Ваш бесплатный пробный период закончился. Оформите подписку, чтобы продолжить пользоваться сервисом!
-    }</i>
-    </blockquote>
-    [LIMITED]
-    <blockquote>
-    • Ваш трафик израсходован.
-
-    <i>{ $is_trial ->
-    [0] { $traffic_strategy ->
-        [NO_RESET] Продлите подписку, чтобы сбросить трафик и продолжить пользоваться сервисом!
-        *[RESET] Трафик будет восстановлен через { $reset_time }. Вы также можете продлить подписку, чтобы сбросить трафик.
+    { $sub_state ->
+    [ACTIVE] { $is_unlimited ->
+        [1] <b>✅ Подписка активна бессрочно</b>
+        *[0] <b>✅ Активна до { $expire_date }</b> · осталось { $days_left } { $days_left ->
+            [one] день
+            [few] дня
+            *[other] дней
+            }
         }
-    *[1] { $traffic_strategy ->
-        [NO_RESET] Оформите подписку, чтобы продолжить пользоваться сервисом!
-        *[RESET] Трафик будет восстановлен через { $reset_time }. Вы также можете оформить подписку, чтобы пользоваться сервисом без ограничений.
+
+        { $key_issued ->
+        [1] Ваш ключ (нажмите, чтобы скопировать):
+        <code>{ $sub_key }</code>
+        *[0] <i>Ключ появится в течение пары минут, мы пришлём его сюда. А пока можно скачать приложение.</i>
         }
-    }</i>
-    </blockquote>
-    [DISABLED]
-    <blockquote>
-    • Ваша подписка отключена.
-
-    <i>Свяжитесь с поддержкой для выяснения причины!</i>
-    </blockquote>
-    *[NONE]
-    <blockquote>
-    • У вас нет оформленной подписки.
-
-    <i>{ $trial_available ->
-    [1] 🎁 Для вас доступен бесплатный пробник — нажмите кнопку ниже, чтобы его получить.
-    *[0] ↘️ Для покупки доступа перейдите в меню «Подписка».
-    }</i>
-    </blockquote>
+    [EXPIRED] <b>⏳ Подписка закончилась { $expire_date }.</b>
+        Продлите — ключ останется тем же.
+    [PAUSED] <b>⏸ Подписка приостановлена.</b>
+        Напишите в поддержку, мы поможем.
+    *[NONE] <b>VPN, который просто работает.</b>
+        Подключение за минуту, один ключ на все устройства.{ $trial_available ->
+        [1] { " " }Попробуйте бесплатно — без оплаты и привязки карты.
+        *[0] { "" }
+        }
     }
 
 msg-menu-devices =
@@ -92,18 +70,31 @@ msg-menu-devices-confirm-delete-all =
 
 msg-menu-invite =
     <b>👥 Пригласить друзей</b>
-    
-    Делитесь вашей уникальной ссылкой и получайте вознаграждение в виде { $reward_type ->
-        [POINTS] <b>баллов, которые можно обменять на подписку или реальные деньги</b>
-        [EXTRA_DAYS] <b>бесплатных дней к вашей подписке</b>
-        *[OTHER] { $reward_type }
-    }!
+
+    { $reward_days ->
+    [0] { $reward_type ->
+        [POINTS] Делитесь своей ссылкой и получайте <b>баллы</b>, которые можно обменять на подписку.
+        *[OTHER] Делитесь своей ссылкой и получайте <b>бесплатные дни</b> к подписке.
+        }
+    *[other] Отправьте другу свою ссылку. Когда он оплатит подписку, вы получите <b>+{ $reward_days } { $reward_days ->
+        [one] день
+        [few] дня
+        *[other] дней
+        }</b>{ $friend_days ->
+        [0] { "" }
+        *[other] , а он — <b>+{ $friend_days } { $friend_days ->
+            [one] день
+            [few] дня
+            *[other] дней
+            }</b> к своей подписке
+        }.
+    }
 
     <b>📊 Статистика</b>:
     <blockquote>
     👥 Всего приглашенных: { $referrals }
-    💳 Платежей по вашей ссылке: { $payments }
-    { $reward_type -> 
+    💳 Оплатили подписку: { $payments }
+    { $reward_type ->
     [POINTS] 💎 Ваши баллы: { $points }
     *[EXTRA_DAYS] { empty }
     }
@@ -1415,7 +1406,8 @@ msg-notifications-system-route-thread-id =
 # Subscription
 msg-subscription-main = <b>💳 Подписка</b>
 msg-subscription-plans = <b>📦 Выберите план</b>
-msg-subscription-new-success = Чтобы начать пользоваться нашим сервисом, нажмите кнопку <code>`{ btn-subscription.connect }`</code> и следуйте инструкциям!
+msg-subscription-new-success = Нажмите «📲 Подключить DobbyVPN» — там всё по шагам.
+
 msg-subscription-renew-success = Ваша подписка продлена на { $added_duration }.
 
 msg-subscription-plan = 
@@ -1438,46 +1430,14 @@ msg-subscription-plan =
     }
     
 msg-subscription-details =
-    <b>{ $plan }</b>:
-    <blockquote>
-    { $description ->
+    <b>{ $plan }</b>{ $description ->
     [0] { empty }
     *[HAS]
-    { $description }
-    }
-
-    • <b>Лимит трафика</b>: { $traffic }
-    • <b>Лимит устройств</b>: { $devices }
-    { $period ->
-    [0] { empty }
-    *[HAS] • <b>Длительность</b>: { $period }
-    }
-    { $final_amount ->
-    [0] { empty }
-    *[HAS] • <b>Стоимость</b>: { frg-payment-amount }
-    }
-    </blockquote>
-    
-    { $discount_percent ->
-    [0] { empty }
-    *[HAS]
-    <blockquote>
-    <i>Цены указаны с учетом { $is_personal_discount ->
-        [1] вашей персональной скидки { $discount_percent }%
-        *[0] разовой скидки { $discount_percent }%
-        }</i>
-    </blockquote>
+    <i>{ $description }</i>
     }
 
 msg-subscription-duration =
-    <b>⏳ Выберите длительность</b>
-
-    { msg-subscription-details }
-
-    { $plan_is_modified ->
-    [1] <i>ℹ️ Условия плана изменились с момента последней покупки — актуальные данные указаны выше.</i>
-    *[0] { "" }
-    }
+    <b>⏳ Выберите срок</b>
 
 msg-subscription-payment-method =
     <b>💳 Выберите способ оплаты</b>
@@ -1490,23 +1450,12 @@ msg-subscription-payment-method =
     }
 
 msg-subscription-confirm =
-    <b>🛒 Подтверждение { $purchase_type ->
-    [RENEW] продления
-    [CHANGE] изменения
-    *[OTHER] покупки
-    } подписки</b>
+    <b>{ $period } · { frg-payment-amount }</b>
 
-    { msg-subscription-details }
-
-    { $purchase_type ->
-    [RENEW] <i>⚠️ Текущая подписка будет <u>продлена</u> на выбранный срок.</i>
-    [CHANGE] <i>⚠️ Текущая подписка будет <u>заменена</u> выбранной без пересчета оставшегося срока.</i>
-    *[OTHER] { empty }
-    }
-
-    { $plan_is_modified ->
-    [0] { empty }
-    *[MODIFIED] <i>ℹ️ Условия плана изменились с момента последней покупки — актуальные данные указаны выше.</i>
+    { $is_free ->
+    [1] Подписка бесплатная — нажмите кнопку ниже.
+    *[0] Оплатите и вернитесь сюда — подписка включится сама.
+        <i>Оплата разовая, без автопродления.</i>
     }
 
 msg-subscription-trial =
@@ -1515,14 +1464,7 @@ msg-subscription-trial =
     { msg-subscription-new-success }
 
 msg-subscription-success =
-    <b>✅ Оплата прошла успешно!</b>
-
-    { $purchase_type ->
-    [NEW] { msg-subscription-new-success }
-    [RENEW] { msg-subscription-renew-success }
-    [CHANGE] { msg-subscription-change-success }
-    *[OTHER] { $purchase_type }
-    }
+    <b>✅ Оплачено, подписка до { $expire_date }</b>
 
 msg-subscription-change-success = 
     Ваша подписка была изменена.
@@ -1825,3 +1767,27 @@ msg-ad-link-stats =
     <blockquote>
     { $revenue_lines }
     </blockquote>
+
+msg-menu-connect =
+    <b>📲 Подключить DobbyVPN</b>
+
+    1. Установите приложение DobbyVPN, если его ещё нет, — кнопка «⬇️ Скачать DobbyVPN».
+    2. Скопируйте ключ кнопкой «Скопировать ключ».
+    3. Вставьте ключ в приложении и нажмите «Подключиться».
+
+msg-menu-how-it-works =
+    <b>❓ Как это работает</b>
+
+    После оплаты или пробного периода вы получаете <b>ключ</b> — это строка, по которой приложение DobbyVPN подключается к нашим серверам.
+
+    Ключ один на все ваши устройства и не меняется при продлении. Вставьте его в приложении DobbyVPN и нажмите «Подключиться» — всё.
+
+msg-menu-download =
+    <b>⬇️ Скачать DobbyVPN</b>
+
+    Выберите своё устройство. Для iPhone откроется App Store, для остальных сразу скачается файл установки — откройте его после загрузки.
+
+    <i>Mac с процессором Apple (M1 и новее) — кнопка «macOS», с процессором Intel — «macOS (Intel)». Узнать процессор:  → «Об этом Mac».</i>
+
+    Приложение бесплатное — подписка нужна, чтобы подключиться.
+

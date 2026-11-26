@@ -24,8 +24,17 @@ from src.core.constants import PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.states import Subscription
 
+# Start data key: open the dialog straight on choosing a term for this purchase type.
+# Distinct from "purchase_type", which the success screen receives after a payment.
+PURCHASE_TYPE_KEY = "begin_purchase_type"
+
 
 async def on_subscription_start(start_data: Any, manager: DialogManager) -> None:
+    starts_on_main = manager.current_context().state == Subscription.MAIN
+    if starts_on_main and isinstance(start_data, dict) and PURCHASE_TYPE_KEY in start_data:
+        await _begin_purchase_from_container(manager, PurchaseType(start_data[PURCHASE_TYPE_KEY]))
+        return
+
     if not start_data or "trial_plan" not in start_data:
         return
 
@@ -203,7 +212,7 @@ async def on_purchase_type_select(
 
 
 @inject
-async def on_subscription_plans(  # noqa: C901
+async def on_subscription_plans(
     callback: CallbackQuery,
     widget: Button,
     dialog_manager: DialogManager,
@@ -216,16 +225,63 @@ async def on_subscription_plans(  # noqa: C901
     get_available_plans: FromDishka[GetAvailablePlans],
     create_payment: FromDishka[CreatePayment],
 ) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    logger.info(f"{user.log} Opened subscription plans menu")
-
-    plans: list[PlanDto] = await get_available_plans.system(user)
-    gateways = await payment_gateway_dao.get_active()
-
     if not callback.data:
         raise ValueError("Callback data is empty")
 
     purchase_type = PurchaseType(callback.data.removeprefix(PAYMENT_PREFIX))
+    await begin_purchase(
+        dialog_manager,
+        purchase_type,
+        retort,
+        subscription_dao,
+        payment_gateway_dao,
+        pricing_service,
+        notifier,
+        match_plan,
+        get_available_plans,
+        create_payment,
+    )
+
+
+async def _begin_purchase_from_container(
+    dialog_manager: DialogManager, purchase_type: PurchaseType
+) -> None:
+    container = dialog_manager.middleware_data["dishka_container"]
+    await begin_purchase(
+        dialog_manager,
+        purchase_type,
+        await container.get(Retort),
+        await container.get(SubscriptionDao),
+        await container.get(PaymentGatewayDao),
+        await container.get(PricingService),
+        await container.get(Notifier),
+        await container.get(MatchPlan),
+        await container.get(GetAvailablePlans),
+        await container.get(CreatePayment),
+    )
+
+
+async def begin_purchase(  # noqa: C901
+    dialog_manager: DialogManager,
+    purchase_type: PurchaseType,
+    retort: Retort,
+    subscription_dao: SubscriptionDao,
+    payment_gateway_dao: PaymentGatewayDao,
+    pricing_service: PricingService,
+    notifier: Notifier,
+    match_plan: MatchPlan,
+    get_available_plans: GetAvailablePlans,
+    create_payment: CreatePayment,
+) -> None:
+    """Goes straight to choosing a term (or a plan, if there are several).
+
+    Leaves the dialog when nothing can be bought, so the user is back on the main screen.
+    """
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    logger.info(f"{user.log} Started purchase '{purchase_type}'")
+
+    plans: list[PlanDto] = await get_available_plans.system(user)
+    gateways = await payment_gateway_dao.get_active()
     dialog_manager.dialog_data["purchase_type"] = purchase_type
 
     dialog_manager.dialog_data.pop(CURRENT_DURATION_KEY, None)
@@ -234,11 +290,13 @@ async def on_subscription_plans(  # noqa: C901
     if not plans:
         logger.warning(f"{user.log} No available subscription plans")
         await notifier.notify_user(user, i18n_key="ntf-subscription.plans-unavailable")
+        await dialog_manager.done()
         return
 
     if not gateways:
         logger.warning(f"{user.log} No active payment gateways")
         await notifier.notify_user(user, i18n_key="ntf-subscription.gateways-unavailable")
+        await dialog_manager.done()
         return
 
     current_subscription = await subscription_dao.get_current(user.id)
@@ -247,44 +305,14 @@ async def on_subscription_plans(  # noqa: C901
         if await _resolve_renew_plan(
             user, dialog_manager, current_subscription, plans, match_plan, notifier, retort
         ):
+            if dialog_manager.current_context().state == Subscription.MAIN:
+                await dialog_manager.done()
             return
 
     if len(plans) == 1:
         logger.info(f"{user.log} Auto-selected single plan '{plans[0].id}'")
         dialog_manager.dialog_data[PlanDto.__name__] = retort.dump(plans[0])
         dialog_manager.dialog_data["only_single_plan"] = True
-
-        if len(plans[0].durations) == 1:
-            logger.info(f"{user.log} Auto-selected duration '{plans[0].durations[0].days}'")
-            dialog_manager.dialog_data["selected_duration"] = plans[0].durations[0].days
-            dialog_manager.dialog_data["only_single_duration"] = True
-
-            if len(gateways) == 1:
-                logger.info(f"{user.log} Auto-selected payment method '{gateways[0].type}'")
-                dialog_manager.dialog_data["selected_payment_method"] = gateways[0].type
-                dialog_manager.dialog_data["only_single_payment_method"] = True
-
-                payment_data = await _create_payment_and_get_data(
-                    dialog_manager=dialog_manager,
-                    plan=plans[0],
-                    duration_days=plans[0].durations[0].days,
-                    gateway_type=gateways[0].type,
-                    retort=retort,
-                    payment_gateway_dao=payment_gateway_dao,
-                    notifier=notifier,
-                    pricing_service=pricing_service,
-                    create_payment=create_payment,
-                )
-
-                if payment_data:
-                    _save_payment_data(dialog_manager, payment_data)
-
-                await dialog_manager.switch_to(state=Subscription.CONFIRM)
-                return
-
-            await dialog_manager.switch_to(state=Subscription.PAYMENT_METHOD)
-            return
-
         await dialog_manager.switch_to(state=Subscription.DURATION)
         return
 

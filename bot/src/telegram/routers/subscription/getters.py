@@ -20,6 +20,7 @@ from src.core.utils.i18n_helpers import (
     i18n_format_expire_time,
     i18n_format_traffic_limit,
 )
+from src.infrastructure.dobby.links import is_key_issued
 
 
 def _get_gateway_title(i18n: TranslatorRunner, gateway: PaymentGatewayDto) -> str:
@@ -314,6 +315,7 @@ async def getter_connect(
         "connection_url": config.bot.mini_app_url or current_subscription.url,
         "subscription_url": current_subscription.url,
         "connectable": True,
+        "key_issued": is_key_issued(current_subscription.url),
     }
 
 
@@ -343,9 +345,11 @@ async def success_payment_getter(
         "device_limit": i18n_format_device_limit(subscription.device_limit),
         "expire_time": i18n_format_expire_time(subscription.expire_at),
         "added_duration": i18n_format_days(subscription.plan_snapshot.duration),
+        "expire_date": subscription.expire_at.strftime("%d.%m.%Y"),
         "is_mini_app": config.bot.is_mini_app,
         "is_mini_app_reserve": config.bot.is_mini_app and settings.extra.mini_app_reserve,
         "connection_url": config.bot.mini_app_url or subscription.url,
         "subscription_url": subscription.url,
         "connectable": True,
+        "key_issued": is_key_issued(subscription.url),
     }

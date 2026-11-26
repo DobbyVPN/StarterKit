@@ -62,9 +62,13 @@ btn-requirement =
     .channel-confirm = ✅ Подтвердить
 
 btn-menu =
-    .trial = 🎁 ПОПРОБОВАТЬ БЕСПЛАТНО
-    .trial-paid = 🚀 ПОПРОБОВАТЬ ЗА { $trial_price }
-    .connect = 🚀 Подключиться
+    .download = ⬇️ Скачать DobbyVPN
+    .how-it-works = ❓ Как это работает
+    .renew = 🔄 Продлить
+    .buy = 💳 Купить подписку
+    .trial = 🎁 Попробовать бесплатно
+    .trial-paid = 🚀 Попробовать за { $trial_price }
+    .connect = 📲 Подключить DobbyVPN
     .connect-reserve = 🔗 Подключиться (резерв)
     .devices = 📱 Устройства
     .subscription = 💳 Подписка
@@ -82,7 +86,7 @@ btn-menu =
 
 btn-invite =
     .about = ❓ Подробнее о награде
-    .copy = 📋 Скопировать ссылку
+    .copy = Скопировать ссылку
     .send = 📩 Пригласить
     .qr = 🧾 QR-код
     .withdraw-points = 💎 Обменять баллы
@@ -560,9 +564,9 @@ btn-subscription =
     .new = 💸 Купить подписку
     .renew = 🔄 Продлить
     .change = 🔃 Изменить
-    .promocode = 🎟 Активировать промокод
+    .promocode = 🎟 Есть промокод
     .promocode-confirm = ✅ Подтвердить
-    .pay = 💳 Оплатить
+    .pay = 💳 Оплатить { $final_amount } { $currency }
     .paid = ✅ Я оплатил
     .get = 🎁 Получить бесплатно
     .back-plans = ⬅️ Назад к выбору плана
@@ -600,3 +604,12 @@ btn-ad-links =
     [1] 🟢 Включена
     *[0] 🔴 Выключена
     }
+
+btn-connect =
+    .macos-intel = 💻 macOS (Intel)
+    .guide = 🎬 Видео-инструкция
+    .ios = 🍏 iPhone
+    .android = 🤖 Android
+    .windows = 🪟 Windows
+    .macos = 💻 macOS
+    .copy-key = Скопировать ключ

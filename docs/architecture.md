@@ -67,6 +67,10 @@ made after the give-up still completes when the user returns or presses "I paid"
 move to COMPLETED; the status always comes from the gateway API). The user's check looks 24
 hours back. remnashop's blind 30-minute cleanup of pending transactions skips YooKassa.
 
+Payment methods are the ones enabled in the owner's YooKassa shop: bank cards, YooMoney and,
+if the owner turns it on in the shop settings, the Faster Payments System (pay by QR code from a
+banking app). The bot passes no method, so whatever the shop enables appears on the page.
+
 Opening the payment screen again within 15 minutes (going back and forth, or "Buy" after "I
 paid") reuses the user's unpaid payment for the same plan, duration and amount: the bot asks
 YooKassa for that payment's page instead of creating a new payment. A payment that can no
@@ -158,6 +162,9 @@ the login like this, or read from a file the config-delivery service sends back.
 | `DOBBY_SUBSCRIPTION_URL_TEMPLATE` | Link template with `{id}` |
 | `DOBBY_FORCE_EXPORT_INTERVAL_SECONDS` | Forced export period, default 3600 |
 | `DOBBY_REMINDER_HOURS_BEFORE` | Renewal reminders before expiry, hours, default `[72, 24]` |
+| `DOBBY_DOWNLOAD_URL_IOS`, `_ANDROID`, `_WINDOWS`, `_MACOS` | Download links on "Download DobbyVPN" |
+| `DOBBY_CONNECT_GUIDE_URL` | Optional video or page on how to connect; adds a button to "Connect DobbyVPN" |
+| `DOBBY_REFERRAL_FRIEND_BONUS_DAYS` | Days the invited friend gets on their first payment, default 30 (0 = off) |
 | `REMNAWAVE_TOKEN`, `REMNAWAVE_WEBHOOK_SECRET` | Still required by remnashop's config validation; any value works. To be removed |
 
 **Admin menu in the bot** (remnashop as is): plans, prices, trial, payment gateways and their

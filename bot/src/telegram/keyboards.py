@@ -87,26 +87,26 @@ custom_buttons = (
 )
 
 
+# After a purchase or trial: "Connect DobbyVPN" once the key is issued, otherwise
+# "Download DobbyVPN" (the key arrives later; the app can be installed meanwhile).
 connect_buttons = (
-    WebApp(
-        text=I18nFormat("btn-menu.connect"),
-        url=Format("{connection_url}"),
-        id="connect_miniapp",
-        when=F["is_mini_app"] & F["connectable"],
-        style=Style(ButtonStyle.PRIMARY),
-    ),
-    Url(
-        text=I18nFormat("btn-menu.connect-reserve"),
-        url=Format("{subscription_url}"),
-        id="connect_reserve",
-        when=F["is_mini_app_reserve"] & F["connectable"],
-    ),
-    Url(
-        text=I18nFormat("btn-menu.connect"),
-        url=Format("{connection_url}"),
-        id="connect_sub_page",
-        when=~F["is_mini_app"] & F["connectable"],
-        style=Style(ButtonStyle.PRIMARY),
+    Row(
+        Start(
+            text=I18nFormat("btn-menu.connect"),
+            id="connect_dobby",
+            state=MainMenu.CONNECT,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.SUCCESS),
+            when=F["key_issued"],
+        ),
+        Start(
+            text=I18nFormat("btn-menu.download"),
+            id="download_dobby",
+            state=MainMenu.DOWNLOAD,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.SUCCESS),
+            when=~F["key_issued"],
+        ),
     ),
 )
 
@@ -178,6 +178,12 @@ def get_renew_keyboard() -> InlineKeyboardMarkup:
             callback_data=f"{GOTO_PREFIX}{PAYMENT_PREFIX}{PurchaseType.RENEW}",
         ),
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="btn-back.menu",
+            callback_data=f"{GOTO_PREFIX}{MainMenu.MAIN.state}",
+        ),
+    )
     return builder.as_markup()
 
 
@@ -187,6 +193,12 @@ def get_buy_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="btn-goto.subscription",
             callback_data=f"{GOTO_PREFIX}{PAYMENT_PREFIX}{PurchaseType.NEW}",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="btn-back.menu",
+            callback_data=f"{GOTO_PREFIX}{MainMenu.MAIN.state}",
         ),
     )
     return builder.as_markup()

@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.application.common import EventPublisher, Remnawave
 from src.application.common.dao import SubscriptionDao, TransactionDao, UserDao
 from src.application.common.payment_watcher import PaymentWatcher
+from src.application.common.referral_bonus import ReferralFriendBonus
 from src.application.use_cases.gateways.commands.payment import ProcessPayment
 from src.application.use_cases.gateways.queries.providers import GetPaymentGatewayInstance
 
 from .backend import DobbyBackend, ExportTrigger
 from .config import DobbyConfig
+from .downloads import AndroidDownloadLink
 from .export_job import RedisExportState, UserExportJob
 from .exporter import FileUserExporter, UserExporter
 from .links import SubscriptionLinkProvider, TemplateLinkProvider
@@ -72,6 +74,14 @@ class DobbyProvider(Provider):
     @provide
     def get_export_trigger(self) -> ExportTrigger:
         return TaskiqExportTrigger()
+
+    @provide
+    def get_android_download_link(self, config: DobbyConfig) -> AndroidDownloadLink:
+        return AndroidDownloadLink(config.releases_repository, config.download_url_android)
+
+    @provide
+    def get_referral_friend_bonus(self, config: DobbyConfig) -> ReferralFriendBonus:
+        return ReferralFriendBonus(days=config.referral_friend_bonus_days)
 
     @provide
     def get_payment_watcher(self) -> PaymentWatcher:

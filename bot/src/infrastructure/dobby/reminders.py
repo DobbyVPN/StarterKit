@@ -86,8 +86,13 @@ _DAY_TYPES = {
 
 
 def build_event(stage: str, row: ReminderRow, user: object) -> UserEvent:
+    expire_date = row.expire_at.strftime("%d.%m.%Y")
     if stage == EXPIRED:
-        return SubscriptionExpiredEvent(user=user, is_trial=row.is_trial)  # type: ignore[arg-type]
+        return SubscriptionExpiredEvent(
+            user=user,  # type: ignore[arg-type]
+            is_trial=row.is_trial,
+            expire_date=expire_date,
+        )
 
     hours = int(stage.removeprefix("before_").removesuffix("h"))
     # remnashop's text says "in N days"; its notification switches exist for 1, 2 and 3 days.
@@ -95,6 +100,7 @@ def build_event(stage: str, row: ReminderRow, user: object) -> UserEvent:
     return SubscriptionExpiresEvent(
         user=user,  # type: ignore[arg-type]
         is_trial=row.is_trial,
+        expire_date=expire_date,
         day=day,
         notification_type=_DAY_TYPES.get(min(day, 3), UserNotificationType.EXPIRES_IN_3_DAYS),
     )

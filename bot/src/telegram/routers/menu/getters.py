@@ -1,3 +1,5 @@
+import math
+from enum import StrEnum
 from typing import Any
 
 from aiogram_dialog import DialogManager
@@ -7,16 +9,22 @@ from loguru import logger
 
 from src.application.common import BotService, Remnawave, TranslatorRunner
 from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao
-from src.application.dto import TelegramUserDto
+from src.application.dto import SubscriptionDto, TelegramUserDto
+from src.application.dto.settings import ReferralSettingsDto
 from src.application.use_cases.misc.queries.menu import GetMenuData
 from src.core.config import AppConfig
-from src.core.exceptions import MenuRenderError
-from src.core.utils.i18n_helpers import (
-    i18n_format_device_limit,
-    i18n_format_expire_time,
-    i18n_format_traffic_limit,
+from src.core.enums import (
+    PurchaseType,
+    ReferralLevel,
+    ReferralRewardStrategy,
+    ReferralRewardType,
+    SubscriptionStatus,
 )
-from src.core.utils.time import get_traffic_reset_delta
+from src.core.exceptions import MenuRenderError
+from src.core.utils.time import datetime_now
+from src.infrastructure.dobby.config import DobbyConfig
+from src.infrastructure.dobby.downloads import AndroidDownloadLink
+from src.infrastructure.dobby.links import is_key_issued
 
 
 @inject
@@ -58,6 +66,9 @@ async def menu_getter(
             # referral
             "referral_enabled": menu_data.is_referral_enabled,
             # defaults
+            "sub_state": SubState.NONE,
+            "purchase_type": PurchaseType.NEW,
+            "key_issued": False,
             "has_subscription": False,
             "connectable": False,
             "trial_available": False,
@@ -97,40 +108,59 @@ async def menu_getter(
             return data
 
         subscription = menu_data.current_subscription
-
-        data.update(
-            {
-                "has_subscription": True,
-                "is_trial": subscription.is_trial,
-                "traffic_strategy": subscription.traffic_limit_strategy,
-                "status": subscription.current_status,
-                "subscription_type": subscription.limit_type,
-                "traffic_limit": i18n_format_traffic_limit(subscription.traffic_limit),
-                "device_limit": i18n_format_device_limit(subscription.device_limit),
-                "expire_time": i18n_format_expire_time(subscription.expire_at),
-                "reset_time": i18n_format_expire_time(
-                    get_traffic_reset_delta(
-                        subscription.traffic_limit_strategy,
-                        subscription.created_at,
-                    )
-                ),
-                "connectable": subscription.is_active,
-                "has_device_limit": (
-                    subscription.has_devices_limit or subscription.device_limit == 0
-                )
-                if subscription.is_active
-                else False,
-                "connection_url": config.bot.mini_app_url
-                if isinstance(config.bot.mini_app_url, str)
-                else subscription.url,
-                "subscription_url": subscription.url,
-            }
-        )
+        data.update(subscription_screen_data(subscription))
         logger.debug(f"Menu data for user {user.log}: {data}")
         return data
 
     except Exception as e:
         raise MenuRenderError(str(e)) from e
+
+
+def referral_reward_days(referral: ReferralSettingsDto) -> int:
+    """Days the inviter gets per paying friend, if the reward is a fixed number of days."""
+    reward = referral.reward
+    if (
+        reward.type != ReferralRewardType.EXTRA_DAYS
+        or reward.strategy != ReferralRewardStrategy.AMOUNT
+    ):
+        return 0
+    return max(reward.config.get(ReferralLevel.FIRST, 0), 0)
+
+
+class SubState(StrEnum):
+    NONE = "NONE"
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    PAUSED = "PAUSED"
+
+
+def subscription_screen_data(subscription: SubscriptionDto) -> dict[str, Any]:
+    """What the main screen shows for a current subscription: state, date, key."""
+    status = subscription.current_status
+    if status == SubscriptionStatus.DISABLED:
+        state = SubState.PAUSED
+    elif status == SubscriptionStatus.EXPIRED:
+        state = SubState.EXPIRED
+    else:
+        state = SubState.ACTIVE
+
+    left = subscription.expire_at - datetime_now()
+    days_left = max(0, math.ceil(left.total_seconds() / 86400))
+    return {
+        "has_subscription": True,
+        "sub_state": state,
+        "is_trial": subscription.is_trial,
+        "is_unlimited": subscription.is_unlimited,
+        "expire_date": subscription.expire_at.strftime("%d.%m.%Y"),
+        "days_left": days_left,
+        # A trial cannot be renewed: "Renew" buys a plan instead.
+        "purchase_type": PurchaseType.NEW if subscription.is_trial else PurchaseType.RENEW,
+        "sub_key": subscription.url,
+        "key_issued": is_key_issued(subscription.url),
+        "status": status,
+        "connectable": state == SubState.ACTIVE,
+        "subscription_url": subscription.url,
+    }
 
 
 def get_platform_icon(i18n: TranslatorRunner, platform: str | None) -> str:
@@ -216,6 +246,7 @@ async def invite_getter(
     i18n: FromDishka[TranslatorRunner],
     settings_dao: FromDishka[SettingsDao],
     referral_dao: FromDishka[ReferralDao],
+    dobby_config: FromDishka[DobbyConfig],
     **kwargs: Any,
 ) -> dict[str, Any]:
     settings = await settings_dao.get()
@@ -234,6 +265,9 @@ async def invite_getter(
         "referral_url": referral_url,
         "withdraw": support_url,
         "referral_reset_enabled": int(settings.extra.referral_reset.enabled),
+        # Concrete days for the invite text; 0 when the reward is not a fixed number of days.
+        "reward_days": referral_reward_days(settings.referral),
+        "friend_days": max(dobby_config.referral_friend_bonus_days, 0),
     }
 
 
@@ -267,4 +301,28 @@ async def invite_about_getter(
         "accrual_strategy": settings.referral.accrual_strategy,
         "identical_reward": identical_reward,
         "max_level": max_level,
+    }
+
+
+@inject
+async def connect_getter(
+    dialog_manager: DialogManager,
+    user: TelegramUserDto,
+    subscription_dao: FromDishka[SubscriptionDao],
+    dobby_config: FromDishka[DobbyConfig],
+    android_link: FromDishka[AndroidDownloadLink],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """ "Connect DobbyVPN": download links and the key, or a note that the key is on its way."""
+    subscription = await subscription_dao.get_current(user.id)
+    key = subscription.url if subscription else ""
+    return {
+        "sub_key": key,
+        "key_issued": is_key_issued(key),
+        "url_ios": dobby_config.download_url_ios,
+        "url_android": await android_link.get(),
+        "url_windows": dobby_config.download_url_windows,
+        "url_macos": dobby_config.download_url_macos,
+        "url_macos_intel": dobby_config.download_url_macos_intel,
+        "guide_url": dobby_config.connect_guide_url,
     }

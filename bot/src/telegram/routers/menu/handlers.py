@@ -8,20 +8,13 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
-from src.application.common import BotService, Notifier, Redirect, TranslatorRunner
+from src.application.common import Notifier, Redirect
 from src.application.common.dao import SettingsDao, SubscriptionDao
 from src.application.dto import (
     MediaDescriptorDto,
     MessagePayloadDto,
     PlanSnapshotDto,
     TelegramUserDto,
-)
-from src.application.use_cases.referral.queries.code import GenerateReferralQr
-from src.application.use_cases.remnawave.commands.management import (
-    DeleteUserAllDevices,
-    DeleteUserDevice,
-    DeleteUserDeviceDto,
-    ReissueSubscription,
 )
 from src.application.use_cases.subscription.commands.purchase import (
     ActivateTrialSubscription,
@@ -30,11 +23,11 @@ from src.application.use_cases.subscription.commands.purchase import (
 from src.application.use_cases.user.commands.profile_edit import ResetOwnReferralCode
 from src.application.use_cases.user.queries.plans import GetAvailableTrial
 from src.core.constants import USER_KEY
-from src.core.enums import MediaType
+from src.core.enums import PurchaseType
 from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
-from src.core.utils.time import get_traffic_reset_delta
 from src.telegram.keyboards import CALLBACK_CHANNEL_CONFIRM, CALLBACK_RULES_ACCEPT
+from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import MainMenu, Subscription
 
 router = Router(name=__name__)
@@ -121,161 +114,6 @@ async def on_get_trial(
     )
 
 
-async def on_device_delete_request(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-) -> None:
-    selected_index = int(dialog_manager.item_id)  # type: ignore[attr-defined]
-    hwid_map = dialog_manager.dialog_data.get("hwid_map", [])
-    device = hwid_map[selected_index] if selected_index < len(hwid_map) else None
-
-    if not device:
-        raise ValueError(f"Device not found at index '{selected_index}'")
-
-    dialog_manager.dialog_data["selected_hwid"] = device["hwid"]
-    dialog_manager.dialog_data["selected_device_model"] = device["device_model"] or ""
-    dialog_manager.dialog_data["selected_platform"] = device["platform"] or ""
-    dialog_manager.dialog_data["selected_platform_icon"] = device["platform_icon"]
-    dialog_manager.dialog_data["selected_created_at"] = device["created_at"]
-    await dialog_manager.switch_to(state=MainMenu.DEVICE_CONFIRM_DELETE)
-
-
-@inject
-async def on_device_delete_confirm(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-    delete_user_device: FromDishka[DeleteUserDevice],
-    notifier: FromDishka[Notifier],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    full_hwid = dialog_manager.dialog_data.get("selected_hwid")
-
-    if not full_hwid:
-        raise ValueError("Missing selected device data")
-
-    try:
-        await delete_user_device(user, DeleteUserDeviceDto(user_id=user.id, hwid=full_hwid))
-    except CooldownError as e:
-        await notifier.notify_user(
-            user=user,
-            payload=MessagePayloadDto(
-                i18n_key="ntf-common.cooldown-active",
-                i18n_kwargs={"available_at": i18n_format_expire_time(e.available_at)},
-            ),
-        )
-        return
-    await notifier.notify_user(user=user, i18n_key="ntf-devices.deleted")
-    await dialog_manager.switch_to(state=MainMenu.DEVICES)
-
-
-@inject
-async def on_device_delete_all_confirm(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-    delete_user_all_devices: FromDishka[DeleteUserAllDevices],
-    notifier: FromDishka[Notifier],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    try:
-        await delete_user_all_devices(user)
-    except CooldownError as e:
-        await notifier.notify_user(
-            user=user,
-            payload=MessagePayloadDto(
-                i18n_key="ntf-common.cooldown-active",
-                i18n_kwargs={"available_at": i18n_format_expire_time(e.available_at)},
-            ),
-        )
-        return
-    await notifier.notify_user(user=user, i18n_key="ntf-devices.all-deleted")
-    await dialog_manager.switch_to(state=MainMenu.DEVICES)
-
-
-@inject
-async def on_reissue_subscription_confirm(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-    reissue_subscription: FromDishka[ReissueSubscription],
-    notifier: FromDishka[Notifier],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    try:
-        await reissue_subscription(user)
-    except CooldownError as e:
-        await notifier.notify_user(
-            user=user,
-            payload=MessagePayloadDto(
-                i18n_key="ntf-common.cooldown-active",
-                i18n_kwargs={"available_at": i18n_format_expire_time(e.available_at)},
-            ),
-        )
-        return
-    await notifier.notify_user(user=user, i18n_key="ntf-devices.reissued")
-    await dialog_manager.switch_to(state=MainMenu.DEVICES)
-
-
-@inject
-async def show_reason(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-    i18n: FromDishka[TranslatorRunner],
-    subscription_dao: FromDishka[SubscriptionDao],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    subscription = await subscription_dao.get_current(user.id)
-
-    if subscription:
-        kwargs = {
-            "status": subscription.current_status,
-            "is_trial": subscription.is_trial,
-            "traffic_strategy": subscription.traffic_limit_strategy,
-            "reset_time": i18n_format_expire_time(
-                get_traffic_reset_delta(
-                    subscription.traffic_limit_strategy,
-                    subscription.created_at,
-                )
-            ),
-        }
-    else:
-        kwargs = {"status": False}
-
-    await callback.answer(
-        text=i18n.get("ntf-common.connect-not-available", **kwargs),
-        show_alert=True,
-    )
-
-
-@inject
-async def on_show_qr(
-    callback: CallbackQuery,
-    widget: Button,
-    dialog_manager: DialogManager,
-    bot_service: FromDishka[BotService],
-    generate_referral_qr: FromDishka[GenerateReferralQr],
-    notifier: FromDishka[Notifier],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-
-    referral_url = await bot_service.get_referral_url(user.referral_code)
-    referral_qr = await generate_referral_qr.system(referral_url)
-
-    await notifier.notify_user(
-        user=user,
-        payload=MessagePayloadDto(
-            i18n_key="",
-            media=MediaDescriptorDto(kind="bytes", value=referral_qr, filename="qr.png"),
-            media_type=MediaType.PHOTO,
-            disable_default_markup=False,
-            delete_after=None,
-        ),
-    )
-
-
 @inject
 async def on_text_button_click(
     callback: CallbackQuery,
@@ -352,3 +190,23 @@ async def on_reset_referral_code(
         )
         return
     await notifier.notify_user(user=user, i18n_key="ntf-invite.referral-reset")
+
+
+@inject
+async def on_buy(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    subscription_dao: FromDishka[SubscriptionDao],
+) -> None:
+    """ "Buy" and "Renew": straight to choosing a term. A trial cannot be renewed, so its
+    "Renew" buys a plan."""
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    subscription = await subscription_dao.get_current(user.id)
+    renewable = subscription is not None and not subscription.is_trial
+    purchase_type = PurchaseType.RENEW if renewable else PurchaseType.NEW
+    logger.info(f"{user.log} Started purchase '{purchase_type}' from the main menu")
+    await dialog_manager.start(
+        state=Subscription.MAIN,
+        data={PURCHASE_TYPE_KEY: purchase_type},
+    )

@@ -3,7 +3,14 @@ from dataclasses import dataclass
 from loguru import logger
 
 from src.application.common import EventPublisher, Interactor
-from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao, UserDao
+from src.application.common.dao import (
+    ReferralDao,
+    SettingsDao,
+    SubscriptionDao,
+    TransactionDao,
+    UserDao,
+)
+from src.application.common.referral_bonus import ReferralFriendBonus
 from src.application.common.uow import UnitOfWork
 from src.application.dto import ReferralRewardDto, TransactionDto, UserDto
 from src.application.events import ReferralRewardFailedEvent, ReferralRewardReceivedEvent
@@ -19,7 +26,13 @@ from src.application.use_cases.user.commands.profile_edit import (
     ChangeUserPoints,
     ChangeUserPointsDto,
 )
-from src.core.enums import PurchaseType, ReferralAccrualStrategy, ReferralLevel, ReferralRewardType
+from src.core.enums import (
+    PurchaseType,
+    ReferralAccrualStrategy,
+    ReferralLevel,
+    ReferralRewardType,
+    TransactionStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -143,6 +156,9 @@ class AssignReferralRewards(Interactor[AssignReferralRewardsDto, None]):
         referral_dao: ReferralDao,
         calculate_referral_reward: CalculateReferralReward,
         give_referrer_reward: GiveReferrerReward,
+        transaction_dao: TransactionDao,
+        add_subscription_duration: AddSubscriptionDuration,
+        friend_bonus: ReferralFriendBonus,
     ) -> None:
         self.uow = uow
         self.settings_dao = settings_dao
@@ -150,6 +166,9 @@ class AssignReferralRewards(Interactor[AssignReferralRewardsDto, None]):
         self.referral_dao = referral_dao
         self.calculate_referral_reward = calculate_referral_reward
         self.give_referrer_reward = give_referrer_reward
+        self.transaction_dao = transaction_dao
+        self.add_subscription_duration = add_subscription_duration
+        self.friend_bonus = friend_bonus
 
     async def _execute(self, actor: UserDto, data: AssignReferralRewardsDto) -> None:  # noqa: C901
         settings = await self.settings_dao.get()
@@ -179,6 +198,8 @@ class AssignReferralRewards(Interactor[AssignReferralRewardsDto, None]):
         if not referral:
             logger.info(f"{data.user.log} not referred; reward assignment skipped")
             return
+
+        await self._give_friend_bonus(data)
 
         reward_type = settings.referral.reward.type
         reward_chain = {ReferralLevel.FIRST: referral.referrer}
@@ -242,3 +263,28 @@ class AssignReferralRewards(Interactor[AssignReferralRewardsDto, None]):
                     f"Failed to assign referral reward for level '{level.name}' "
                     f"to referrer '{referrer.remna_name}' — skipping this level"
                 )
+
+    async def _give_friend_bonus(self, data: AssignReferralRewardsDto) -> None:
+        """The invited friend also gets a bonus, once: on their first paid purchase."""
+        if self.friend_bonus.days <= 0:
+            return
+
+        earlier_payments = [
+            t
+            for t in await self.transaction_dao.get_by_user(data.user.id)
+            if t.payment_id != data.transaction.payment_id
+            and t.status == TransactionStatus.COMPLETED
+            and not t.is_test
+            and not t.pricing.is_free
+        ]
+        if earlier_payments:
+            logger.info(f"{data.user.log} already paid before; no friend bonus")
+            return
+
+        try:
+            await self.add_subscription_duration.system(
+                AddSubscriptionDurationDto(user_id=data.user.id, days=self.friend_bonus.days)
+            )
+            logger.info(f"{data.user.log} got the friend bonus: +{self.friend_bonus.days} days")
+        except Exception:
+            logger.exception(f"Failed to give the friend bonus to {data.user.log}")

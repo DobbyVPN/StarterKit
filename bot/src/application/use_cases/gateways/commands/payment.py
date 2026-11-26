@@ -90,7 +90,9 @@ class CreateDefaultPaymentGateway(Interactor[None, None]):
 
                 created_any = True
 
-                is_active = gateway_type == PaymentGatewayType.TELEGRAM_STARS
+                # All off until the owner sets one up (StarterKit sells through YooKassa,
+                # not Telegram Stars).
+                is_active = False
 
                 settings_map = {
                     PaymentGatewayType.TELEGRAM_STARS: TelegramStarsGatewaySettingsDto,
