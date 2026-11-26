@@ -35,7 +35,9 @@ from src.core.enums import PurchaseType
 from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
 from src.infrastructure.dobby.admin import ClientViewStore, gift_action
+from src.infrastructure.dobby.config import DobbyConfig
 from src.telegram.keyboards import CALLBACK_CHANNEL_CONFIRM, CALLBACK_RULES_ACCEPT
+from src.telegram.purchase_widget import PurchaseWidget
 from src.telegram.routers.subscription.handlers import PURCHASE_TYPE_KEY
 from src.telegram.states import MainMenu, Subscription
 
@@ -207,10 +209,24 @@ async def on_buy(
     widget: Button,
     dialog_manager: DialogManager,
     subscription_dao: FromDishka[SubscriptionDao],
+    purchase_widget: FromDishka[PurchaseWidget],
+    config: FromDishka[DobbyConfig],
 ) -> None:
-    """ "Buy" and "Renew": straight to choosing a term. A trial cannot be renewed, so its
-    "Renew" buys a plan."""
+    """ "Buy" and "Renew": the purchase widget, or the usual screens where it cannot be used."""
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    if config.purchase_widget:
+        try:
+            if await purchase_widget.send(user):
+                return
+        except Exception:
+            logger.exception(f"{user.log} Failed to send the purchase widget")
+    await start_text_purchase(dialog_manager, user, subscription_dao)
+
+
+async def start_text_purchase(
+    dialog_manager: DialogManager, user: TelegramUserDto, subscription_dao: SubscriptionDao
+) -> None:
+    """Straight to choosing a term. A trial cannot be renewed, so its "Renew" buys a plan."""
     subscription = await subscription_dao.get_current(user.id)
     renewable = subscription is not None and not subscription.is_trial
     purchase_type = PurchaseType.RENEW if renewable else PurchaseType.NEW

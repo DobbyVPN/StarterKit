@@ -1,5 +1,7 @@
 from aiogram import Router
 
+from src.telegram.purchase_widget import router as purchase_widget_router
+
 from . import dashboard, extra, menu, subscription
 
 
@@ -15,6 +17,7 @@ def setup_routers(router: Router) -> None:
         extra.payment_check.router,
         extra.goto.router,
         extra.inline.router,
+        purchase_widget_router.router,
         #
         menu.handlers.router,
         menu.dialog.router,

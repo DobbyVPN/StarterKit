@@ -2,6 +2,7 @@ from dishka import Provider
 from dishka.integrations.aiogram import AiogramProvider
 
 from src.infrastructure.dobby.provider import DobbyProvider
+from src.telegram.purchase_widget import PurchaseWidgetProvider
 
 from .bot import BotProvider
 from .config import ConfigProvider
@@ -27,6 +28,7 @@ def get_aiogram_providers() -> list[Provider]:
         I18nProvider(),
         I18nAiogramProvider(),
         PaymentGatewaysProvider(),
+        PurchaseWidgetProvider(),
         RedisProvider(),
         RemnawaveProvider(),
         RetortProvider(),

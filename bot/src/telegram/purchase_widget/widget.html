@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light}
+body{margin:0;background:#D9D2C9;color:#141414;font:15px/1.35 system-ui,sans-serif}
+#r{padding:12px;display:flex;flex-direction:column;gap:8px}
+h1{font-size:17px;margin:0 0 2px;font-weight:700}
+.c{background:#F6F3EE;border:1px solid #B9B1A6;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;gap:8px;color:#141414;font:inherit;text-align:left;width:100%}
+.c.on{border:2px solid #141414;padding:9px 11px}
+.c b{font-weight:600}.c small{display:block;color:#55504A}
+.f,.o{border-radius:9px;padding:11px;font:600 15px system-ui,sans-serif;width:100%}
+.f{background:#141414;color:#F6F3EE;border:0}
+.o{background:transparent;color:#141414;border:1px solid #141414}
+.u{background:none;border:0;color:#141414;text-decoration:underline;font:inherit;padding:4px;align-self:center}
+.m{color:#55504A;font-size:13px;margin:0;text-align:center}
+.t{margin:0;font-weight:600}
+.e{color:#9A2B1E;font-size:13px;margin:0;text-align:center}
+button[disabled]{opacity:.6}
+</style></head><body><div id="r"></div><script>
+var W=window.TelegramWidget,T=__TEXTS__,s={},sel=null,busy=false,fly=false,err="",opened=false,R=document.getElementById("r");
+function x(v){return String(v==null?"":v).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function load(d){try{s=JSON.parse(d||"{}")||{}}catch(e){s={}}
+var o=s.o||[];if(!o.some(function(i){return i.k==sel}))sel=s.sel||(o[0]&&o[0].k)||null;draw()}
+function b(cls,txt,act,arg){return'<button class="'+cls+'" data-a="'+act+'" data-v="'+x(arg||"")+'"'+(busy?" disabled":"")+">"+x(txt)+"</button>"}
+function cur(){var o=s.o||[];for(var i=0;i<o.length;i++)if(o[i].k==sel)return o[i];return null}
+function draw(){var h="<h1>"+x(T.title)+"</h1>",st=s.s||"choose";
+if(st=="choose"){if(s.tr)h+=b("o",s.tr,"q","trial");
+(s.o||[]).forEach(function(i){h+='<button class="c'+(i.k==sel?" on":"")+'" data-a="pick" data-v="'+x(i.k)+'"><span><b>'+x(i.t)+"</b>"+(i.m?"<small>"+x(i.m)+"</small>":"")+"</span><b>"+x(i.p)+"</b></button>"});
+var c=cur();if(c){h+=b("f",T.pay+" "+c.p,"q","buy:"+c.k)}else if(!s.tr){h+='<p class="m">'+x(T.none)+"</p>"}
+h+='<p class="m">'+x(T.once)+"<br>"+x(T.refund)+"</p>"}
+else if(st=="wait"){var w=s.w||{};h+='<p class="t">'+x(w.t)+" · "+x(w.p)+"</p>"+'<p class="m">'+x(T.wait)+"</p>"+'<p class="m">● '+x(T.waiting)+"</p>";
+h+=b(opened?"o":"f",opened?T.again:T.open,"link",w.u)+b("u",T.other,"q","choose")}
+else if(st=="fail"){h+='<p class="t">'+x(T.failT)+"</p>"+'<p class="m">'+x(T.fail)+"</p>"+b("f",T.retry,"q","buy:"+(s.w&&s.w.k||""))+b("u",T.other,"q","choose")}
+else if(st=="paid"){var p=s.pd||{};h+='<p class="t">'+x(T.until)+" "+x(p.d)+"</p>"+'<p class="m">'+x(p.n)+"</p>"+b("f",T.connect,"q","connect")+b("u",T.renew,"q","choose")}
+if(err)h+='<p class="e">'+x(err)+"</p>";R.innerHTML=h}
+function ask(d,bg){if(fly)return;fly=true;if(!bg){busy=true;err="";draw()}
+W.request(d).then(function(a){fly=busy=false;if(a&&a.result){var r=a.result;if(r.charAt(0)=="{")load(r);else{err=r;draw()}}else draw()},
+function(e){fly=busy=false;if(!bg)err=T.error;draw()})}
+R.addEventListener("click",function(ev){var t=ev.target;while(t&&t.tagName!="BUTTON")t=t.parentNode;if(!t||t.disabled)return;var a=t.getAttribute("data-a"),v=t.getAttribute("data-v");
+if(a=="pick"){sel=v;draw()}else if(a=="link"){if(v){W.openLink(v);opened=true;draw()}}else if(a=="q"){if(v=="choose")opened=false;ask(v)}});
+W.onEvent("chatDataChanged",function(){load(W.chatData)});
+load(W.chatData);ask("check",true);
+setInterval(function(){if(s.s=="wait"&&!document.hidden&&!fly)ask("check",true)},5000);
+W.ready();
+</script></body></html>
