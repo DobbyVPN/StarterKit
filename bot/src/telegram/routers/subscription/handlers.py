@@ -10,7 +10,13 @@ from loguru import logger
 
 from src.application.common import Notifier
 from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, SubscriptionDao
-from src.application.dto import PlanDto, PlanSnapshotDto, SubscriptionDto, TelegramUserDto
+from src.application.dto import (
+    PaymentGatewayDto,
+    PlanDto,
+    PlanSnapshotDto,
+    SubscriptionDto,
+    TelegramUserDto,
+)
 from src.application.services import PricingService
 from src.application.use_cases.gateways.commands.payment import (
     CreatePayment,
@@ -22,6 +28,7 @@ from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
 from src.core.constants import PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
+from src.infrastructure.dobby.admin import ClientViewStore, payment_allowed_in_client_view
 from src.telegram.states import Subscription
 
 # Start data key: open the dialog straight on choosing a term for this purchase type.
@@ -102,6 +109,15 @@ async def _create_payment_and_get_data(
         user, duration, payment_gateway.currency, apply_discount=not plan.is_trial
     )
 
+    dialog_manager.dialog_data["client_view_blocked"] = False
+    if not pricing.is_free and await _blocked_in_client_view(dialog_manager, payment_gateway):
+        logger.info(f"{user.log} Live payment blocked in client view")
+        dialog_manager.dialog_data["client_view_blocked"] = True
+        await notifier.notify_user(user, i18n_key="ntf-subscription.client-view-payment-disabled")
+        return CachedPaymentData(
+            payment_id="", payment_url=None, final_pricing=retort.dump(pricing)
+        )
+
     try:
         result = await create_payment(
             user,
@@ -123,6 +139,19 @@ async def _create_payment_and_get_data(
         logger.error(f"{user.log} Failed to create payment")
         await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
         raise
+
+
+async def _blocked_in_client_view(
+    dialog_manager: DialogManager, gateway: PaymentGatewayDto
+) -> bool:
+    """An admin viewing as a client may only pay through a YooKassa test shop."""
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    container = dialog_manager.middleware_data["dishka_container"]
+    if not await (await container.get(ClientViewStore)).is_on(user.id):
+        return False
+    api_key = getattr(gateway.settings, "api_key", None)
+    secret = api_key.get_secret_value() if api_key is not None else None
+    return not payment_allowed_in_client_view(gateway.type, secret)
 
 
 async def _resolve_renew_plan(

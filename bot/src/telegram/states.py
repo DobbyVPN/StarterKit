@@ -13,6 +13,10 @@ class MainMenu(StatesGroup):
     INVITE_ABOUT = State()
     CONNECT = State()
     DOWNLOAD = State()
+    ADMIN_PAYMENTS = State()
+    ADMIN_CATALOG = State()
+    MY_VPN = State()
+    GIFT_SELF = State()
     HOW_IT_WORKS = State()
 
 
