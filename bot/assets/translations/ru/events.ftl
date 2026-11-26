@@ -492,11 +492,7 @@ event-payment =
 
     Платеж получен, но не удалось выдать подписку. Транзакция помечена как FAILED. Требуется ручная проверка.
 
-event-remnashop-welcome =
-    <b>💎 Remnashop v{ $version }</b>
+event-starterkit-welcome =
+    <b>🟢 DobbyVPN StarterKit v{ $version } запущен</b>
 
-    Проект создан и поддерживается всего одним <strike>разработчиком</strike> электриком. Поскольку бот полностью БЕСПЛАТНЫЙ и имеет открытый исходный код, он существует только благодаря вашей поддержке.
-
-    ⭐ <i>Поставьте звездочку на <a href="{ $repository }">GitHub</a> и присоединяйтесь к нашему <a href="https://t.me/@remna_shop">сообществу</a>.</i>
-
-    🎁 <i>Также есть <a href="https://boosty.to/snoups/purchase/3778398?ssource=DIRECT&amp;share=subscription_link">приватный чат</a> для донатеров.</i>
+    Бот работает. /start — главное меню; тарифы, оплата и настройки — в админке.

@@ -51,10 +51,9 @@ btn-backup =
 btn-remnashop-info =
     .release-latest = 👀 Посмотреть
     .how-upgrade = ❓ Как обновить
-    .github = ⭐ GitHub
-    .telegram = 👪 Telegram
-    .donate = 💰 Поддержать разработчика
-    .docs = 📖 Документация
+
+btn-starterkit-info =
+    .guide = 📖 Инструкция
 
 btn-requirement =
     .rules-accept = ✅ Принять правила

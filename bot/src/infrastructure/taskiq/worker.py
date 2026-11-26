@@ -9,6 +9,7 @@ from src.core.config import AppConfig
 from src.core.logger import setup_logger
 from src.infrastructure.di import create_taskiq_container
 from src.infrastructure.services import NotificationWorker
+from src.infrastructure.startup import ensure_defaults
 from src.telegram.dispatcher import get_bg_manager_factory, get_dispatcher, setup_worker_dispatcher
 
 from .broker import broker
@@ -31,6 +32,9 @@ def worker() -> RedisStreamBroker:
 
     @broker.on_event(TaskiqEvents.WORKER_STARTUP)
     async def startup(state: TaskiqState) -> None:
+        # Tasks publish events too; on a fresh database the settings row must exist first.
+        await ensure_defaults(container)
+
         event_bus = await container.get(EventSubscriber)
         event_bus.set_container_factory(lambda: container)
         event_bus.autodiscover()
